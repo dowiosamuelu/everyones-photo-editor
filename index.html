@@ -69,6 +69,15 @@
   .rec .acts { display: flex; gap: 8px; margin-top: 10px; }
   .rec .acts .pill { flex: 1; padding: 9px; }
   body.scene-open #lookName, body.scene-open #looks, body.scene-open #controls, body.scene-open #sceneBar { display: none; }
+  body.settings-open #lookName, body.settings-open #looks, body.settings-open #controls, body.settings-open #sceneBar { display: none; }
+  .inpanel { flex: none; display: none; flex-direction: column; background: var(--panel); border-radius: 16px 16px 0 0; max-height: 52dvh; border-top: 1px solid var(--line); }
+  .inpanel.open { display: flex; }
+  .inpanel .body { overflow-y: auto; padding: 12px 18px calc(16px + var(--safe-b)); }
+  .inpanel h2 { font-size: 15px; margin: 2px 0 10px; display: flex; justify-content: space-between; align-items: center; }
+  .inpanel h4 { font-size: 13px; margin: 14px 0 8px; color: var(--fg); }
+  .inpanel h4 small { font-weight: 400; color: var(--dim); margin-left: 6px; font-size: 11px; }
+  .inpanel .field { margin: 0 0 12px; }
+  #fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; border-radius: 4px; }
   .look .sw { position: relative; }
   .look .badge { position: absolute; top: 3px; right: 3px; font-size: 9px; background: var(--accent); color: #1a0d00; border-radius: 6px; padding: 1px 4px; font-weight: 700; font-style: normal; }
   #lookName { flex: none; text-align: center; font-size: 13px; color: var(--dim); height: 22px; letter-spacing: .04em; }
@@ -124,6 +133,7 @@
 <div id="viewfinder">
   <div id="stage">
     <canvas id="preview"></canvas>
+    <canvas id="fx"></canvas>
     <div id="stamp"></div>
   </div>
   <div id="hint"></div>
@@ -153,18 +163,17 @@
 <input type="file" accept="image/*" id="fileInput" class="hidden-input">
 <input type="file" accept="image/*" capture="environment" id="captureInput" class="hidden-input">
 
-<div class="sheet" id="settingsSheet">
+<div class="inpanel" id="settingsSheet">
   <div class="body">
-    <h2>調整 <button class="pill" data-close>完成</button></h2>
-    <div class="field"><label>濾鏡強度 <output id="o_strength"></output></label><input type="range" id="s_strength" min="0" max="100" step="1"></div>
-    <div class="field"><label>曝光（檔） <output id="o_exposure"></output></label><input type="range" id="s_exposure" min="-1" max="1" step="0.05"></div>
-    <div class="field"><label>色溫 <output id="o_temp"></output></label><input type="range" id="s_temp" min="-1" max="1" step="0.05"></div>
-    <div class="field"><label>顆粒 <output id="o_grain"></output></label><input type="range" id="s_grain" min="0" max="200" step="5"></div>
-    <div class="field"><label>暈光 Halation <output id="o_halation"></output></label><input type="range" id="s_halation" min="0" max="200" step="5"></div>
-    <div class="field"><label>暗角（加強） <output id="o_vignette"></output></label><input type="range" id="s_vignette" min="0" max="100" step="5"></div>
+    <h2>調整 <button class="pill" id="settingsDone">完成</button></h2>
+    <h4>基本</h4>
+    <div id="sliders_basic"></div>
+    <h4>效果 <small>只動畫面的某些位置或某些亮度，不是整張一樣</small></h4>
+    <div id="sliders_fx"></div>
+    <button class="pill" id="rerollBtn">換一組漏光位置與灰塵</button>
     <div class="toggle"><span>日期戳記</span><input type="checkbox" id="s_stamp"></div>
     <div class="toggle"><span>依場景微調色彩<br><small style="color:var(--dim);font-size:12px">例如壓住紅葉不爆色、人像膚色提亮</small></span><input type="checkbox" id="sceneTweak"></div>
-    <p class="note">每種底片風格都有自己的預設值，上面的滑桿是在那個基礎上再加減。暗角和日期戳記是裝飾效果，不屬於底片色調本身。</p>
+    <p class="note">每種風格都有自己的預設值，滑桿是在那個基礎上再加減。用相機拍時，每拍一張漏光位置和灰塵都會重新隨機，就像真的底片。</p>
     <button class="pill" id="resetBtn">重設為預設值</button>
   </div>
 </div>
@@ -204,7 +213,8 @@ const zeroHSL = () => Object.fromEntries(BANDS.map(b => [b, [0, 0, 0]]));
 const BASE = {
   exposure: 0, temp: 0, tint: 0, sat: 1, fade: 0, white: 1, contrast: 0, shoulder: 0.35,
   shadowTint: [0, 0, 0], highTint: [0, 0, 0],
-  chrome: 0, grain: 0.25, grainSize: 1, halation: 0.12, bloom: 0, vignette: 0.12, mono: 0, soft: 0
+  chrome: 0, grain: 0.25, grainSize: 1, halation: 0.12, bloom: 0, vignette: 0.12, mono: 0, soft: 0,
+  crush: 0, chan: [0, 0, 0], clarity: 0.12, edge: 0, leak: 0, dust: 0
 };
 
 const LOOKS = [
@@ -212,42 +222,61 @@ const LOOKS = [
       exposure: 0.1, temp: 0.22, sat: 0.88, fade: 0.05, white: 0.97, contrast: -0.12, shoulder: 0.55,
       shadowTint: [-0.006, 0.0, 0.014], highTint: [0.022, 0.008, -0.014],
       hsl: { orange: [0, -0.06, 0.08], yellow: [0, -0.05, 0], green: [-0.015, -0.15, 0], blue: [0, -0.12, 0] },
-      grain: 0.2, grainSize: 0.9, halation: 0.12, soft: 0.15 } },
+      grain: 0.2, grainSize: 0.9, halation: 0.12, soft: 0.15, clarity: 0.06 } },
   { id: 'gold', name: '復古暖黃', ref: '參考 Kodak Gold 200', p: {
       temp: 0.4, sat: 1.08, fade: 0.03, contrast: 0.22, shoulder: 0.35,
       shadowTint: [0.006, 0.0, -0.012], highTint: [0.026, 0.016, -0.028],
       hsl: { red: [0, 0.05, 0], orange: [0, 0.12, 0], yellow: [0, 0.08, 0], green: [-0.02, 0, 0], blue: [0, -0.06, 0] },
-      grain: 0.34, grainSize: 1.1, halation: 0.18, vignette: 0.16 } },
+      grain: 0.34, grainSize: 1.1, halation: 0.18, vignette: 0.16, chan: [0.05, 0.02, -0.06], clarity: 0.15 } },
   { id: 'superia', name: '冷調綠影', ref: '參考 Fujifilm Superia 400', p: {
       temp: -0.15, sat: 1.08, fade: 0.02, contrast: 0.32, shoulder: 0.3,
       shadowTint: [-0.012, 0.02, 0.0], highTint: [0.012, -0.006, 0.01],
       hsl: { green: [0.02, 0.15, -0.07] },
-      grain: 0.36, grainSize: 1.0, halation: 0.12 } },
+      grain: 0.36, grainSize: 1.0, halation: 0.12, chan: [-0.04, 0.06, 0.0], clarity: 0.2 } },
   { id: 'pro400h', name: '過曝粉彩', ref: '參考 Fujifilm Pro 400H 過曝', p: {
       exposure: 0.45, temp: -0.1, sat: 0.82, fade: 0.06, white: 0.98, contrast: -0.18, shoulder: 0.75,
       shadowTint: [-0.006, 0.006, 0.014], highTint: [0.004, 0.004, 0.0],
       hsl: { orange: [0, 0, 0.05], green: [0.04, -0.1, 0.08], aqua: [0, 0, 0.05], blue: [0, -0.15, 0.08] },
-      grain: 0.16, grainSize: 0.9, halation: 0.1, soft: 0.1 } },
+      grain: 0.16, grainSize: 0.9, halation: 0.1, soft: 0.1, bloom: 0.15, clarity: 0 } },
   { id: 'vivid', name: '鮮豔正片', ref: '參考 Fujifilm Velvia', p: {
       sat: 1.25, contrast: 0.35, shoulder: 0.3, chrome: 0.45,
       hsl: { red: [0, -0.05, 0], orange: [0, -0.05, 0], green: [0.015, 0.05, 0], blue: [0.015, 0.1, 0] },
-      grain: 0.12, grainSize: 0.9, halation: 0.05, vignette: 0.1 } },
+      grain: 0.12, grainSize: 0.9, halation: 0.05, vignette: 0.14, clarity: 0.25 } },
   { id: 'classicneg', name: '經典負片', ref: '參考富士 Classic Negative', p: {
       sat: 0.85, fade: 0.03, contrast: 0.35, shoulder: 0.4,
       shadowTint: [-0.014, 0.02, 0.004], highTint: [0.022, -0.004, -0.01],
-      chrome: 0.3, grain: 0.26, halation: 0.1 } },
+      chrome: 0.3, grain: 0.26, halation: 0.1, clarity: 0.2 } },
   { id: 'classicchrome', name: '經典正片', ref: '參考富士 Classic Chrome', p: {
       temp: 0.05, sat: 0.75, fade: 0.02, contrast: 0.26, shoulder: 0.3,
       shadowTint: [-0.008, 0.0, 0.014], highTint: [0.008, 0.004, -0.004],
       hsl: { blue: [0, -0.08, 0], purple: [0, -0.2, 0], magenta: [0, -0.35, 0] },
-      chrome: 0.4, grain: 0.2, halation: 0.06 } },
+      chrome: 0.4, grain: 0.2, halation: 0.06, clarity: 0.25 } },
   { id: 'night', name: '電影夜色', ref: '參考 CineStill 800T', p: {
       temp: -0.45, sat: 1.0, fade: 0.03, contrast: 0.18, shoulder: 0.45,
       shadowTint: [-0.02, 0.008, 0.014], highTint: [0.024, 0.008, -0.014],
       hsl: { orange: [0, 0.12, 0], aqua: [0, 0.05, 0], blue: [-0.03, 0, 0] },
-      grain: 0.45, grainSize: 1.15, halation: 0.55, vignette: 0.14 } },
+      grain: 0.45, grainSize: 1.15, halation: 0.55, vignette: 0.18, chan: [-0.05, 0.0, 0.06], bloom: 0.12, clarity: 0.15 } },
   { id: 'mono', name: '黑白粗顆粒', ref: '參考 Kodak Tri-X 400', p: {
-      mono: 1, contrast: 0.45, fade: 0.02, shoulder: 0.3, grain: 0.55, grainSize: 1.25, halation: 0, vignette: 0.16 } }
+      mono: 1, contrast: 0.45, fade: 0.02, shoulder: 0.3, grain: 0.55, grainSize: 1.25, halation: 0, vignette: 0.2, clarity: 0.3 } },
+  /* ---- 依使用者提供的 6 張參考照片量測（黑位、白位、各亮度色偏、邊角清晰度與亮度） ---- */
+  { id: 'amber', name: '琥珀褪色', ref: '參考照片：美術館座椅', p: {
+      exposure: 0.15, temp: 0.75, sat: 0.85, fade: 0.24, white: 0.9, contrast: -0.1, shoulder: 0.6,
+      shadowTint: [0.06, 0.02, -0.07], highTint: [0.045, 0.015, -0.06], chan: [0.03, 0, -0.06],
+      bloom: 0.35, vignette: 0.18, grain: 0.12, clarity: 0.05, halation: 0.1 } },
+  { id: 'mist', name: '霧白空間', ref: '參考照片：空房間角落', p: {
+      exposure: 0.1, temp: 0.12, sat: 0.55, fade: 0.18, white: 0.91, contrast: 0.05, shoulder: 0.5,
+      bloom: 0.3, vignette: 0.45, edge: 0.35, grain: 0.1, clarity: 0.1, halation: 0.05 } },
+  { id: 'pool', name: '青藍泳池', ref: '參考照片：游泳池', p: {
+      temp: -0.35, sat: 0.95, fade: 0.1, white: 0.97, contrast: 0.15, shoulder: 0.35,
+      shadowTint: [-0.06, 0.005, 0.055], highTint: [-0.01, 0.0, 0.01], hsl: { aqua: [0, 0, -0.03], blue: [0, 0.05, 0] },
+      edge: 0.6, clarity: 0.25, grain: 0.12, vignette: 0.05, halation: 0.06 } },
+  { id: 'greystreet', name: '灰綠街景', ref: '參考照片：街頭', p: {
+      exposure: -0.15, tint: -2.5, sat: 0.5, fade: 0.1, white: 0.76, contrast: 0.08, shoulder: 0.4,
+      shadowTint: [-0.012, 0.025, -0.006], highTint: [0.004, 0.022, -0.02],
+      vignette: 0.6, edge: 0.8, grain: 0.3, grainSize: 1.2, clarity: 0.1, halation: 0.05 } },
+  { id: 'spot', name: '暗調聚光', ref: '參考照片：苔蘚', p: {
+      exposure: -0.35, crush: 0.08, contrast: 0.4, sat: 1.15, shoulder: 0.4, white: 0.86,
+      highTint: [0.03, 0.03, -0.06], vignette: 0.7, clarity: 0.45, grain: 0.18, bloom: 0.08 } }
 ];
 LOOKS.forEach(l => { const h = Object.assign(zeroHSL(), l.p.hsl || {}); l.p = Object.assign({}, BASE, l.p, { hsl: h }); });
 const lookIndex = id => LOOKS.findIndex(l => l.id === id);
@@ -280,14 +309,14 @@ const SCENE_GROUPS = [
       score: { gold: 3, portra: 2, classicchrome: -3, night: -2 },
       tweak: { temp: 0.2 }, why: '黃昏：手機會把金黃色中和掉，補回暖色' },
     { id: 'indoor', label: '室內燈光', hint: '餐廳、家裡、聚會現場',
-      score: { classicchrome: 2, portra: 1, night: 1, gold: -2 },
+      score: { classicchrome: 2, portra: 1, night: 1, amber: 1, mist: 1, gold: -2 },
       tweak: { temp: -0.15 }, why: '室內：燈光已經偏暖，不再加暖' },
     { id: 'night', label: '夜晚戶外', hint: '街燈、夜景',
       score: { night: 4, mono: 2, portra: -1, gold: -1, pro400h: -2, vivid: -1 }, why: '夜晚：陰影偏青、燈光保留橘色與光暈' }
   ] },
   { key: 'things', title: '畫面裡有', note: '可複選，沒有就不選', single: false, help: '', options: [
     { id: 'green', label: '綠葉・草地', hint: '',
-      score: { superia: 2, pro400h: 1 }, tweak: { 'green.s': -0.1, 'green.l': 0.05, 'yellow.s': -0.05 }, why: '綠葉：降飽和、提亮，避免螢光綠' },
+      score: { superia: 2, pro400h: 1, spot: 1 }, tweak: { 'green.s': -0.1, 'green.l': 0.05, 'yellow.s': -0.05 }, why: '綠葉：降飽和、提亮，避免螢光綠' },
     { id: 'yellowleaf', label: '黃葉・銀杏', hint: '',
       score: { vivid: 3, gold: 1, mono: -3 }, tweak: { temp: 0.15, chrome: 0.3, 'green.s': -0.15, 'blue.s': -0.15, 'yellow.h': -0.008, 'yellow.s': 0.05 },
       why: '黃葉：黃色微偏橘，壓低其他顏色突顯主角' },
@@ -300,13 +329,13 @@ const SCENE_GROUPS = [
       score: { classicchrome: 1, mono: 1, portra: 1, gold: -1 }, tweak: { exposure: 0.35, temp: 0.08, contrast: -0.08 },
       why: '雪景：補曝光讓雪變白，稍微加暖避免雪偏藍' },
     { id: 'sea', label: '海・藍天', hint: '',
-      score: { classicneg: 2, vivid: 1 }, tweak: { 'blue.l': -0.05, 'aqua.l': -0.03 }, why: '海與天空：藍色稍微壓深，層次更多' },
+      score: { classicneg: 2, vivid: 1, pool: 2 }, tweak: { 'blue.l': -0.05, 'aqua.l': -0.03 }, why: '海與天空：藍色稍微壓深，層次更多' },
     { id: 'street', label: '街道・街景', hint: '',
-      score: { classicchrome: 2, classicneg: 1, mono: 1 }, why: '街道：收斂的紀實色彩' },
+      score: { classicchrome: 2, classicneg: 1, mono: 1, greystreet: 2 }, why: '街道：收斂的紀實色彩' },
     { id: 'concrete', label: '水泥・清水模', hint: '',
-      score: { mono: 3, classicchrome: 2, gold: -1 }, tweak: { 'blue.s': -0.2, 'green.s': -0.2 }, why: '清水模：讓灰色保持中性，不被天空染藍' },
+      score: { mono: 3, classicchrome: 2, mist: 2, gold: -1 }, tweak: { 'blue.s': -0.2, 'green.s': -0.2 }, why: '清水模：讓灰色保持中性，不被天空染藍' },
     { id: 'glass', label: '玻璃大樓', hint: '',
-      score: { classicchrome: 2, superia: 1, gold: -2 }, tweak: { 'blue.s': -0.05 }, why: '玻璃建築：冷色乾淨，不加暖' },
+      score: { classicchrome: 2, superia: 1, pool: 1, gold: -2 }, tweak: { 'blue.s': -0.05 }, why: '玻璃建築：冷色乾淨，不加暖' },
     { id: 'brick', label: '紅磚・老房子', hint: '',
       score: { gold: 2, portra: 1 }, tweak: { 'red.s': -0.1, 'red.h': 0.01 }, why: '紅磚：保留暖色，但紅色不過飽和' },
     { id: 'neon', label: '霓虹・燈飾', hint: '',
@@ -355,7 +384,8 @@ function applyTweak(p, tweak) {
   return p;
 }
 
-const USER_DEFAULT = { strength: 100, exposure: 0, temp: 0, grain: 100, halation: 100, vignette: 0, stamp: false };
+const USER_DEFAULT = { strength: 100, exposure: 0, temp: 0, tint: 0, grain: 100, halation: 100, vignette: 0,
+  bloom: 0, clarity: 0, black: 0, white: 0, edge: 0, leak: 0, dust: 0, stamp: false };
 
 /* ---------------- WebGL 濾鏡渲染器 ---------------- */
 const VS = `#version 300 es
@@ -367,15 +397,17 @@ precision highp float;
 in vec2 vUv; out vec4 o;
 uniform sampler2D uTex;
 uniform vec2 uRes;
-uniform float uSeed, uExposure, uSat, uFade, uWhite, uContrast, uShoulder;
-uniform vec3 uWB, uShadowTint, uHighTint;
+uniform float uSeed, uExposure, uSat, uFade, uWhite, uCrush, uContrast, uShoulder;
+uniform vec3 uWB, uShadowTint, uHighTint, uChan;
 uniform vec3 uHSL[8];
 const float HC[9] = float[9](0.0, 30./360., 58./360., 120./360., 180./360., 220./360., 275./360., 320./360., 1.0);
 uniform float uChrome, uGrain, uGrainCell, uHalation, uBloom, uVignette, uMono, uSoft, uStrength;
-uniform float uLodHal, uLodSoft, uFlipX;
+uniform float uClarity, uEdge, uLeak, uLeakA, uLeakP, uFxSeed;
+uniform float uLodHal, uLodSoft, uLodMid, uFlipX;
 
 vec3 toLin(vec3 c){ return pow(max(c,0.0), vec3(2.2)); }
 vec3 toGam(vec3 c){ return pow(max(c,0.0), vec3(1.0/2.2)); }
+float luma(vec3 c){ return dot(c, vec3(.299, .587, .114)); }
 vec3 rgb2hsv(vec3 c){
   vec4 K = vec4(0., -1./3., 2./3., -1.);
   vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
@@ -386,10 +418,6 @@ vec3 rgb2hsv(vec3 c){
 vec3 hsv2rgb(vec3 c){
   vec3 p = abs(fract(c.xxx + vec3(1., 2./3., 1./3.))*6. - 3.);
   return c.z * mix(vec3(1.), clamp(p-1., 0., 1.), c.y);
-}
-float band(float h, float center, float width){
-  float d = abs(fract(h - center + 0.5) - 0.5);
-  return clamp(1. - d/width, 0., 1.);
 }
 float hash(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
 float vnoise(vec2 p){
@@ -404,28 +432,72 @@ vec3 blurAt(vec2 uv, float lod){
 }
 void main(){
   vec2 uv = vUv; if (uFlipX > 0.5) uv.x = 1. - uv.x;
+  float asp = uRes.x / uRes.y;
+  vec2 dq = (vUv - .5) * vec2(asp, 1.);
+  float r = length(dq) / length(vec2(0.5 * asp, 0.5));        // 0 = 中心，1 = 四角
+
   vec3 src = texture(uTex, uv).rgb;
-  vec3 lin = toLin(src);
-  if (uSoft > 0.) lin = mix(lin, toLin(blurAt(uv, uLodSoft)), uSoft);
+  vec3 bSmall = blurAt(uv, uLodSoft), bMid = blurAt(uv, uLodMid);
+
+  // 1. 鏡頭：越靠角落越糊（中心保持清楚）
+  float ew = uEdge * smoothstep(0.25, 1.0, r);
+  vec3 base = mix(src, bSmall, clamp(ew * 1.8, 0., 1.));
+  base = mix(base, bMid, clamp(ew * 1.8 - 0.8, 0., 1.));
+
+  vec3 lin = toLin(base);
+  float soft = clamp(uSoft + uGrain * 0.25 * step(0.0, uGrain), 0., 1.);   // 顆粒越粗，細節越少
+  lin = mix(lin, toLin(bSmall), soft * (1. - ew));
   float ex = exp2(uExposure);
   lin *= ex * uWB;
+
+  // 2. 光學暗角：在光線進底片前就變暗（不是最後疊一層黑）
+  lin *= 1. - uVignette * smoothstep(0.15, 1.15, r);
+
+  // 3. 光暈：Halation（紅橘色、貼著強光）＋ 柔光（亮處往外擴散）
   if (uHalation > 0. || uBloom > 0.) {
-    vec3 b = (toLin(blurAt(uv, uLodHal)) + toLin(blurAt(uv, uLodHal + 1.5))) * 0.5 * ex * uWB;
-    float bl = dot(b, vec3(.2126, .7152, .0722));
-    float hl = smoothstep(0.35, 1.0, bl);
-    lin += uHalation * hl * vec3(1.0, 0.32, 0.1) * 0.9;
-    lin += uBloom * max(b - 0.4, 0.) * 0.5;
+    vec3 b1 = toLin(blurAt(uv, uLodHal)) * ex * uWB;
+    vec3 b2 = toLin(blurAt(uv, uLodHal + 1.5)) * ex * uWB;
+    vec3 b = (b1 + b2) * 0.5;
+    lin += uHalation * smoothstep(0.35, 1.0, luma(b)) * vec3(1.0, 0.32, 0.1) * 0.9;
+    vec3 glow = b2 * smoothstep(0.12, 0.85, luma(b2));
+    lin += uBloom * glow * 0.75;
+    lin = mix(lin, max(lin, b), clamp(uBloom * 0.4, 0., 1.));
   }
+
+  // 4. 漏光：從某一側進來，形狀帶雜訊、每張位置不同
+  if (uLeak > 0.) {
+    vec2 dir = vec2(cos(uLeakA), sin(uLeakA));
+    vec2 q = vUv - .5;
+    float edgeD = max(0., 0.5 - dot(q, dir));
+    float across = dot(q, vec2(-dir.y, dir.x));
+    float n = vnoise(vec2(across * 5. + uFxSeed, edgeD * 4. + uFxSeed * 0.37));
+    float lk = exp(-edgeD / (0.06 + 0.13 * n)) * exp(-pow(across - uLeakP, 2.) / (0.025 + 0.06 * n));
+    vec3 lc = mix(vec3(1.0, 0.16, 0.03), vec3(1.0, 0.75, 0.38), smoothstep(0.35, 0.95, lk));
+    lin += uLeak * lk * lc * 2.2;
+  }
+
   vec3 c = toGam(lin);
   float knee = 1. - 0.45 * uShoulder;
   vec3 rolled = knee + (1. - knee) * tanh((c - knee) / (1. - knee));
   c = mix(c, rolled, step(vec3(knee), c));
   c = clamp(c, 0., 1.);
-  c = clamp(mix(c, c*c*(3.-2.*c), uContrast), 0., 1.);
+  // 5. 對比：RGB 三層各自的 S 曲線（顏色會隨亮度改變）
+  c = clamp(mix(c, c*c*(3.-2.*c), vec3(uContrast) + uChan), 0., 1.);
+
+  // 6. 立體：局部對比（中半徑）＋ 邊緣效應（小半徑），只動亮度
+  if (uClarity != 0.) {
+    // 細紋理加強，但強烈明暗邊緣要收斂，否則會出現數位感的白邊光圈
+    float lb = luma(base);
+    float lm = luma(mix(bMid, blurAt(uv, uLodMid + 0.7), 0.5));
+    float dm = lb - lm, ds = lb - luma(bSmall);
+    dm = dm / (1. + abs(dm) * 9.);
+    ds = ds / (1. + abs(ds) * 6.);
+    float k = uClarity * (1.6 * dm + 0.9 * ds) * (0.35 + c.g * 0.65 * (1. - c.g) * 4. * 0.65);
+    c = clamp(c + k, 0., 1.);
+  }
 
   vec3 hsv = rgb2hsv(c);
   float sw = smoothstep(0.04, 0.3, hsv.y);
-  // 8 個色相區段之間線性內插（紅→橘→黃→綠→青→藍→紫→洋紅→紅）
   vec3 adj = vec3(0.);
   for (int i = 0; i < 8; i++) {
     float a = HC[i], b = HC[i + 1];
@@ -437,25 +509,27 @@ void main(){
   hsv.z *= 1. + adj.z;
   c = hsv2rgb(hsv);
 
-  float L = dot(c, vec3(.299, .587, .114));
+  float L = luma(c);
   c = mix(vec3(L), c, uSat);
   float sat = max(max(c.r, c.g), c.b) - min(min(c.r, c.g), c.b);
   c *= 1. - uChrome * sat * sat * 0.45;
-  L = dot(c, vec3(.299, .587, .114));
+  L = luma(c);
   c += (uShadowTint * (1.-L)*(1.-L) + uHighTint * L*L) * 1.6;
   c = mix(c, vec3(dot(c, vec3(.3, .59, .11))), uMono);
-  c = mix(vec3(uFade), vec3(uWhite), clamp(c, 0., 1.));
 
-  float asp = uRes.x / uRes.y;
-  vec2 d = (vUv - .5) * vec2(asp, 1.);
-  float r = length(d) / length(vec2(0.5 * asp, 0.5));
-  c *= 1. - uVignette * smoothstep(0.35, 1.05, r);
+  // 7. 黑位與白位：壓黑（crush）或褪色（fade），白色上限
+  c = clamp((c - uCrush) / (1. - uCrush), 0., 1.);
+  c = mix(vec3(uFade), vec3(uWhite), c);
 
+  // 8. 顆粒：暗部多、高光少；強度在畫面上成團不均；大小兩層；RGB 各自不同
   vec2 gp = vUv * uRes / uGrainCell + uSeed * vec2(17.13, 41.7);
-  float g = (vnoise(gp) + 0.5 * vnoise(gp * 2.07 + 5.3)) / 1.5 - 0.5;
-  vec3 gc = vec3(g) + 0.3 * (vec3(vnoise(gp + 11.1), vnoise(gp + 23.7), vnoise(gp + 37.3)) - 0.5) * (1. - uMono);
-  L = dot(c, vec3(.299, .587, .114));
-  c += gc * uGrain * 0.3 * (0.3 + 3.0 * L * (1. - L));
+  float clump = 0.4 + 1.2 * vnoise(gp * 0.085 + uSeed * 3.1);
+  float g = (vnoise(gp) * 0.6 + vnoise(gp * 1.93 + 5.3) * 0.4) - 0.5;
+  g += (vnoise(gp * 0.45 + 9.7) - 0.5) * 0.55;
+  vec3 gch = (vec3(vnoise(gp + 11.1), vnoise(gp + 23.7), vnoise(gp + 37.3)) - 0.5) * vec3(0.45, 0.38, 0.25) * (1. - uMono);
+  L = luma(c);
+  float tone = mix(1.3, 0.22, smoothstep(0.06, 0.95, L)) * smoothstep(0.0, 0.07, L + 0.02);
+  c += (vec3(g) + gch) * uGrain * 0.22 * clump * tone;
   c = clamp(c, 0., 1.);
   o = vec4(mix(src, c, uStrength), 1.);
 }`;
@@ -520,6 +594,11 @@ class FilmRenderer {
     gl.uniform1f(u.uLodHal, Math.log2(Math.max(1, 0.006 * maxDim)));
     gl.uniform1f(u.uLodSoft, Math.log2(Math.max(1, 0.0012 * maxDim)));
     gl.uniform1f(u.uFlipX, opt.flipX ? 1 : 0);
+    gl.uniform1f(u.uCrush, p.crush); gl.uniform3fv(u.uChan, p.chan);
+    gl.uniform1f(u.uClarity, p.clarity); gl.uniform1f(u.uEdge, p.edge);
+    const fx = opt.fx || { a: 0, p: 0, s: 0 };
+    gl.uniform1f(u.uLeak, p.leak); gl.uniform1f(u.uLeakA, fx.a); gl.uniform1f(u.uLeakP, fx.p); gl.uniform1f(u.uFxSeed, fx.s);
+    gl.uniform1f(u.uLodMid, Math.log2(Math.max(1, 0.01 * maxDim)));
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 }
@@ -537,6 +616,7 @@ const state = {
   lookIdx: Math.max(0, lookIndex(store.get('lookId', 'portra'))),
   scene: Object.assign({ subject: null, light: null, things: [] }, store.get('scene', {})),
   sceneTweak: store.get('sceneTweak', true),
+  fx: null,
   user: Object.assign({}, USER_DEFAULT, store.get('user', {})),
   facing: 'environment',
   stream: null, video: null, editBitmap: null, editBlob: null,
@@ -551,9 +631,13 @@ function effectiveParams() {
   const base = LOOKS[state.lookIdx].p, u = state.user;
   const p = Object.assign({}, base, { hsl: Object.assign({}, base.hsl) });
   if (state.sceneTweak) applyTweak(p, recommend(state.scene).tweak);
-  p.exposure += u.exposure; p.temp += u.temp;
+  p.exposure += u.exposure; p.temp += u.temp; p.tint += u.tint;
   p.grain *= u.grain / 100; p.halation *= u.halation / 100;
   p.vignette = Math.min(1, p.vignette + u.vignette / 100);
+  p.bloom += u.bloom / 100; p.clarity += u.clarity / 100; p.edge = Math.min(1, p.edge + u.edge / 100);
+  if (u.black > 0) p.fade += u.black / 100 * 0.22; else p.crush += -u.black / 100 * 0.12;
+  p.white -= u.white / 100 * 0.3;
+  p.leak += u.leak / 100; p.dust += u.dust / 100;
   return p;
 }
 
@@ -575,6 +659,7 @@ function layout() {
   const cap = 1400 / Math.max(pw, ph); if (cap < 1) { pw = Math.round(pw * cap); ph = Math.round(ph * cap); }
   state.pw = pw; state.ph = ph;
   els.stamp.style.fontSize = Math.max(10, ch * 0.038) + 'px';
+  if (state.fx) drawFxOverlay();
 }
 window.addEventListener('resize', () => { layout(); requestRender(); });
 
@@ -599,11 +684,11 @@ function frame() {
       if (!state.pw || state.lastVW !== v.videoWidth) { state.lastVW = v.videoWidth; layout(); }
       renderer.setSource(v, v.videoWidth, v.videoHeight);
       state.seed = (state.seed + 1) % 97;
-      renderer.render(p, state.pw, state.ph, { seed: state.seed, strength, flipX: state.facing === 'user' });
+      renderer.render(p, state.pw, state.ph, { seed: state.seed, strength, flipX: state.facing === 'user', fx: state.fx });
     }
     requestRender();
   } else if (state.mode === 'edit' && state.editPreview) {
-    renderer.render(p, state.pw, state.ph, { seed: 3, strength });
+    renderer.render(p, state.pw, state.ph, { seed: 3, strength, fx: state.fx });
   }
 }
 
@@ -675,10 +760,12 @@ async function exportImage(bmp, flipX) {
   const src = document.createElement('canvas'); src.width = w; src.height = h;
   src.getContext('2d').drawImage(bmp, 0, 0, w, h);
   exportRenderer.setSource(src, w, h);
-  exportRenderer.render(effectiveParams(), w, h, { seed: Math.random() * 90, strength: state.user.strength / 100, flipX });
+  const ep = effectiveParams();
+  exportRenderer.render(ep, w, h, { seed: Math.random() * 90, strength: state.user.strength / 100, flipX, fx: state.fx });
   const out = document.createElement('canvas'); out.width = w; out.height = h;
   const ctx = out.getContext('2d');
   ctx.drawImage(exportRenderer.canvas, 0, 0);
+  drawDust(ctx, w, h, ep.dust * (state.user.strength / 100), state.fx.seed);
   if (state.user.stamp) {
     const fs = Math.round(h * 0.038);
     ctx.font = `700 ${fs}px "Courier New", ui-monospace, monospace`;
@@ -706,7 +793,7 @@ async function shoot() {
     const shot = { blob, url: URL.createObjectURL(blob), name: `film_${Date.now()}.jpg` };
     state.shots.unshift(shot);
     els.thumb.style.backgroundImage = `url(${shot.url})`;
-    if (state.mode === 'edit') openViewer(shot); else toast('已拍下，點左下角看照片並存檔');
+    if (state.mode === 'edit') openViewer(shot); else { toast('已拍下，點左下角看照片並存檔'); state.fx = newFx(); drawFxOverlay(); }
   } catch (e) { console.error(e); toast('處理失敗：' + (e.message || e)); }
   finally { state.busy = false; els.shutter.classList.remove('busy'); }
 }
@@ -761,7 +848,7 @@ async function buildSwatches() {
   x.fillStyle = '#c0392b'; x.fillRect(22, 82, 24, 14);
   const r = new FilmRenderer(document.createElement('canvas'), true);
   r.setSource(c, 96, 96);
-  for (const l of LOOKS) { r.render(l.p, 96, 96, { seed: 2, strength: 1 }); swatchCache[l.id] = r.canvas.toDataURL('image/jpeg', 0.8); }
+  for (const l of LOOKS) { r.render(l.p, 96, 96, { seed: 2, strength: 1, fx: { a: 0, p: 0, s: 0 } }); swatchCache[l.id] = r.canvas.toDataURL('image/jpeg', 0.8); }
   const lose = r.gl.getExtension('WEBGL_lose_context'); if (lose) lose.loseContext();
 }
 function buildLooks() {
@@ -881,23 +968,96 @@ $('sceneTweak').onchange = e => { state.sceneTweak = e.target.checked; store.set
 
 function setShutterLabel() { els.shutter.querySelector('span').textContent = state.mode === 'edit' ? '存檔' : ''; }
 
-const SLIDERS = {
-  strength: v => v + '%', exposure: v => (v > 0 ? '+' : '') + Number(v).toFixed(2),
-  temp: v => (v > 0 ? '暖 +' : v < 0 ? '冷 ' : '') + Number(v).toFixed(2), grain: v => v + '%', halation: v => v + '%', vignette: v => '+' + v + '%'
-};
+const pct = v => v + '%', sgn = v => (v > 0 ? '+' : '') + v;
+const SLIDERS = [
+  // [key, 標題, min, max, step, 顯示, 區段]
+  ['strength', '濾鏡強度', 0, 100, 1, pct, 'basic'],
+  ['exposure', '曝光（檔）', -1, 1, 0.05, v => (v > 0 ? '+' : '') + Number(v).toFixed(2), 'basic'],
+  ['temp', '色溫（冷 ↔ 暖）', -1, 1, 0.05, v => Number(v).toFixed(2), 'basic'],
+  ['tint', '色調（綠 ↔ 洋紅）', -2, 2, 0.1, v => Number(v).toFixed(1), 'basic'],
+  ['black', '黑位（壓黑 ↔ 褪色）', -100, 100, 5, sgn, 'fx'],
+  ['white', '白位上限（越大白越灰）', 0, 100, 5, pct, 'fx'],
+  ['clarity', '立體（局部對比）', -50, 100, 5, sgn, 'fx'],
+  ['bloom', '柔光（亮處擴散）', 0, 100, 5, pct, 'fx'],
+  ['halation', '暈光 Halation（強光周圍紅暈）', 0, 200, 5, pct, 'fx'],
+  ['edge', '邊緣柔焦（越靠角落越糊）', 0, 100, 5, pct, 'fx'],
+  ['vignette', '暗角（加強）', 0, 100, 5, v => '+' + v + '%', 'fx'],
+  ['grain', '顆粒', 0, 200, 5, pct, 'fx'],
+  ['leak', '漏光', 0, 100, 5, pct, 'fx'],
+  ['dust', '灰塵・毛髮・刮痕', 0, 100, 5, pct, 'fx']
+];
+function buildSliders() {
+  for (const [k, label, min, max, step, , sec] of SLIDERS) {
+    const d = document.createElement('div'); d.className = 'field';
+    d.innerHTML = `<label>${label} <output id="o_${k}"></output></label><input type="range" id="s_${k}" min="${min}" max="${max}" step="${step}">`;
+    $('sliders_' + sec).appendChild(d);
+  }
+}
 function bindSettings() {
-  for (const k of Object.keys(SLIDERS)) {
+  for (const [k, , , , , fmt] of SLIDERS) {
     const s = $('s_' + k), o = $('o_' + k);
-    s.value = state.user[k]; o.textContent = SLIDERS[k](state.user[k]);
-    s.oninput = () => { state.user[k] = Number(s.value); o.textContent = SLIDERS[k](s.value); store.set('user', state.user); requestRender(); };
+    s.value = state.user[k]; o.textContent = fmt(state.user[k]);
+    s.oninput = () => { state.user[k] = Number(s.value); o.textContent = fmt(s.value); store.set('user', state.user); requestRender(); if (k === 'dust') drawFxOverlay(); };
   }
   const st = $('s_stamp'); st.checked = state.user.stamp;
   st.onchange = () => { state.user.stamp = st.checked; store.set('user', state.user); updateStamp(); };
 }
-$('resetBtn').onclick = () => { state.user = Object.assign({}, USER_DEFAULT); store.set('user', state.user); bindSettings(); updateStamp(); requestRender(); };
-$('settingsBtn').onclick = () => $('settingsSheet').classList.add('open');
+$('resetBtn').onclick = () => { state.user = Object.assign({}, USER_DEFAULT); store.set('user', state.user); bindSettings(); updateStamp(); drawFxOverlay(); requestRender(); };
+$('rerollBtn').onclick = () => { state.fx = newFx(); drawFxOverlay(); requestRender(); };
+$('settingsBtn').onclick = () => {
+  if (document.body.classList.contains('scene-open')) closeScenePanel();
+  document.body.classList.add('settings-open'); $('settingsSheet').classList.add('open'); layout(); requestRender();
+};
+$('settingsDone').onclick = () => { document.body.classList.remove('settings-open'); $('settingsSheet').classList.remove('open'); layout(); requestRender(); };
 function closeSheets() { document.querySelectorAll('.sheet').forEach(s => s.classList.remove('open')); }
 document.querySelectorAll('.sheet').forEach(s => s.addEventListener('click', e => { if (e.target === s || e.target.hasAttribute('data-close')) closeSheets(); }));
+
+/* ---------------- 隨機材質：漏光位置、灰塵、毛髮、刮痕（每張不同） ---------------- */
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function newFx() {
+  const seed = (Math.random() * 1e9) | 0, R = mulberry32(seed);
+  const side = Math.floor(R() * 4);
+  return { seed, a: side * Math.PI / 2 + (R() - 0.5) * 0.7, p: (R() - 0.5) * 0.6, s: R() * 50 };
+}
+function drawDust(ctx, w, h, amount, seed) {
+  if (amount <= 0) return;
+  const R = mulberry32(seed ^ 0x5bd1e995), k = Math.max(w, h) / 1000, amt = Math.min(1, amount);
+  ctx.save();
+  // 灰塵：底片上的灰塵掃描後多半是白點，大小不一；少數是黑點
+  const n = Math.round(amt * 80);
+  for (let i = 0; i < n; i++) {
+    const x = R() * w, y = R() * h, rad = (0.7 + R() * R() * 3.2) * k, white = R() < 0.8;
+    const a = (0.3 + R() * 0.6) * Math.min(1, amt * 1.4), col = white ? '255,250,240' : '25,18,12';
+    const g = ctx.createRadialGradient(x, y, 0, x, y, rad * 1.6);
+    g.addColorStop(0, `rgba(${col},${a})`); g.addColorStop(0.55, `rgba(${col},${a * 0.6})`); g.addColorStop(1, `rgba(${col},0)`);
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, rad * 1.6, 0, 7); ctx.fill();
+  }
+  // 毛髮：細的彎曲線
+  const hairs = Math.round(amt * (1 + R() * 4));
+  for (let i = 0; i < hairs; i++) {
+    const x = R() * w, y = R() * h, len = (40 + R() * 180) * k, ang = R() * Math.PI * 2, bend = (R() - 0.5) * 2.4;
+    ctx.strokeStyle = `rgba(255,250,240,${0.3 + R() * 0.35})`; ctx.lineWidth = (0.6 + R() * 0.9) * k;
+    ctx.beginPath(); ctx.moveTo(x, y);
+    ctx.quadraticCurveTo(x + Math.cos(ang + bend) * len * 0.6, y + Math.sin(ang + bend) * len * 0.6, x + Math.cos(ang) * len, y + Math.sin(ang) * len);
+    ctx.stroke();
+  }
+  // 刮痕：細長、接近垂直（底片在相機裡被拖過）
+  const sc = Math.round(amt * 3 * R());
+  for (let i = 0; i < sc; i++) {
+    const x = R() * w, y0 = R() * h * 0.3, y1 = h * (0.6 + R() * 0.4);
+    ctx.strokeStyle = `rgba(255,255,255,${0.12 + R() * 0.2})`; ctx.lineWidth = (0.5 + R() * 0.8) * k;
+    ctx.beginPath(); ctx.moveTo(x, y0);
+    ctx.bezierCurveTo(x + (R() - 0.5) * 20 * k, y0 + (y1 - y0) / 3, x + (R() - 0.5) * 20 * k, y0 + 2 * (y1 - y0) / 3, x + (R() - 0.5) * 10 * k, y1);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+function drawFxOverlay() {
+  const c = $('fx'); if (!state.pw) return;
+  c.width = state.pw; c.height = state.ph;
+  const ctx = c.getContext('2d'); ctx.clearRect(0, 0, c.width, c.height);
+  if (state.mode !== 'none') drawDust(ctx, c.width, c.height, effectiveParams().dust, state.fx.seed);
+}
 
 $('importBtn').onclick = () => $('fileInput').click();
 $('fileInput').onchange = e => { openImage(e.target.files[0]); e.target.value = ''; };
@@ -937,7 +1097,8 @@ async function tryCamera() {
 /* ---------------- 啟動 ---------------- */
 (async function init() {
   await buildSwatches().catch(() => {});
-  buildLooks(); buildSceneGroups(); bindSettings(); layout(); setShutterLabel();
+  state.fx = newFx();
+  buildSliders(); buildLooks(); buildSceneGroups(); bindSettings(); layout(); setShutterLabel();
   await tryCamera();
   if ('serviceWorker' in navigator && location.protocol === 'https:') {
     navigator.serviceWorker.register('sw.js').catch(() => {});
