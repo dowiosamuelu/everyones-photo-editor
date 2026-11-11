@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0e0e0e">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>底片機 Film Cam</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  :root {
+    --bg: #0e0e0e; --panel: #1a1a1a; --line: #2c2c2c; --fg: #f2efe9; --dim: #9a958c;
+    --accent: #ff8a2a; --safe-t: env(safe-area-inset-top, 0px); --safe-b: env(safe-area-inset-bottom, 0px);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font-family: -apple-system, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif; overscroll-behavior: none; }
+  body { display: flex; flex-direction: column; height: 100dvh; padding-top: var(--safe-t); padding-bottom: var(--safe-b); user-select: none; -webkit-user-select: none; }
+  button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+  header { height: 48px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; flex: none; }
+  header h1 { font-size: 15px; font-weight: 600; letter-spacing: .08em; margin: 0; }
+  .icon-btn { width: 40px; height: 40px; border-radius: 20px; display: grid; place-items: center; }
+  .icon-btn:active { background: #ffffff18; }
+  .icon-btn svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  #viewfinder { flex: 1; min-height: 0; position: relative; display: grid; place-items: center; overflow: hidden; }
+  #stage { position: relative; }
+  #preview { display: block; width: 100%; height: 100%; background: #000; border-radius: 4px; }
+  #stamp { position: absolute; right: 5%; bottom: 4.5%; font-family: "Courier New", ui-monospace, monospace; font-weight: 700;
+    color: #ff9a3c; text-shadow: 0 0 4px #ff6a00cc, 0 0 10px #ff5a0088; letter-spacing: .12em; display: none; pointer-events: none; }
+  #hint { position: absolute; inset: 0; display: none; place-items: center; text-align: center; padding: 24px; color: var(--dim); font-size: 14px; line-height: 1.7; }
+  #hint b { color: var(--fg); font-weight: 600; }
+  #hint .row { display: flex; gap: 10px; justify-content: center; margin-top: 16px; }
+  .pill { padding: 10px 18px; border-radius: 22px; background: var(--panel); border: 1px solid var(--line); font-size: 14px; color: var(--fg); }
+  .pill.primary { background: var(--accent); border-color: var(--accent); color: #1a0d00; font-weight: 600; }
+  #sceneBar { flex: none; margin: 4px auto 6px; max-width: calc(100% - 28px); display: flex; align-items: center; gap: 8px;
+    padding: 7px 14px; border-radius: 18px; background: var(--panel); border: 1px solid var(--line); font-size: 13px; color: var(--dim);
+    white-space: nowrap; overflow: hidden; }
+  #sceneBar b { color: var(--fg); font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+  #sceneBar.set { border-color: #ff8a2a66; }
+  #scenePanel { flex: none; display: none; flex-direction: column; background: var(--panel); border-radius: 16px 16px 0 0;
+    max-height: 64dvh; border-top: 1px solid var(--line); }
+  #scenePanel.open { display: flex; }
+  #scenePanel .scroll { overflow-y: auto; padding: 12px 16px 4px; }
+  .sgroup { margin-bottom: 10px; }
+  .sgroup h3 { font-size: 13px; font-weight: 600; margin: 0 0 7px; color: var(--fg); }
+  .sgroup h3 small { font-weight: 400; color: var(--dim); margin-left: 6px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { padding: 6px 11px; border-radius: 15px; border: 1px solid var(--line); background: #222; font-size: 13px; color: var(--fg); }
+  .chip.on { background: var(--accent); border-color: var(--accent); color: #1a0d00; font-weight: 600; }
+  .shint { font-size: 12px; color: var(--dim); margin-top: 5px; }
+  .rec { border-top: 1px solid var(--line); padding: 10px 16px calc(10px + var(--safe-b)); }
+  .rec .why { font-size: 12px; color: var(--dim); line-height: 1.45; margin-bottom: 8px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .scrollWrap { position: relative; min-height: 0; flex: 1 1 auto; display: flex; flex-direction: column; }
+  #scenePanel .scroll { flex: 1 1 auto; min-height: 0; }
+  .more { position: absolute; left: 0; right: 0; bottom: 0; padding: 22px 0 6px; text-align: center; font-size: 12px; color: var(--fg);
+    background: linear-gradient(transparent, var(--panel) 60%); pointer-events: none; display: none; }
+  .rec .row { display: flex; gap: 8px; align-items: center; }
+  .recLooks { display: flex; gap: 8px; flex: 1; overflow-x: auto; scrollbar-width: none; }
+  .recLook { flex: none; display: flex; align-items: center; gap: 6px; padding: 4px 10px 4px 4px; border-radius: 10px; border: 1px solid var(--line); font-size: 12px; color: var(--dim); }
+  .recLook i { width: 28px; height: 28px; border-radius: 6px; background-size: cover; display: block; }
+  .recLook.on { border-color: var(--accent); color: var(--fg); }
+  .recLook em { font-style: normal; font-size: 10px; color: var(--accent); display: block; }
+  .rec .tweak { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--dim); margin-top: 8px; }
+  .rec .tweak input { accent-color: var(--accent); }
+  .rec .acts { display: flex; gap: 8px; margin-top: 10px; }
+  .rec .acts .pill { flex: 1; padding: 9px; }
+  body.scene-open #lookName, body.scene-open #looks, body.scene-open #controls, body.scene-open #sceneBar { display: none; }
+  .look .sw { position: relative; }
+  .look .badge { position: absolute; top: 3px; right: 3px; font-size: 9px; background: var(--accent); color: #1a0d00; border-radius: 6px; padding: 1px 4px; font-weight: 700; font-style: normal; }
+  #lookName { flex: none; text-align: center; font-size: 13px; color: var(--dim); height: 22px; letter-spacing: .04em; }
+  #lookName b { color: var(--fg); font-weight: 600; margin-right: 6px; }
+  #looks { flex: none; display: flex; gap: 10px; overflow-x: auto; padding: 6px 14px 10px; scrollbar-width: none; scroll-snap-type: x proximity; }
+  #looks::-webkit-scrollbar { display: none; }
+  .look { flex: none; width: 64px; text-align: center; font-size: 11px; color: var(--dim); scroll-snap-align: center; }
+  .look .sw { width: 64px; height: 64px; border-radius: 10px; border: 2px solid transparent; display: block; margin-bottom: 5px; background-size: cover; background-position: center; }
+  .look.on { color: var(--fg); }
+  .look.on .sw { border-color: var(--accent); }
+  #controls { flex: none; height: 104px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 0 22px; }
+  #thumb { width: 48px; height: 48px; border-radius: 8px; background: var(--panel) center/cover; border: 1px solid var(--line); justify-self: start; }
+  #shutter { width: 76px; height: 76px; border-radius: 50%; border: 4px solid var(--fg); display: grid; place-items: center; }
+  #shutter span { width: 60px; height: 60px; border-radius: 50%; background: var(--fg); transition: transform .08s; display: grid; place-items: center; color: #111; font-size: 13px; font-weight: 700; }
+  #shutter:active span { transform: scale(.9); }
+  #shutter.busy span { background: var(--dim); }
+  #flip { justify-self: end; }
+  .sheet { position: fixed; inset: 0; background: #000a; display: none; z-index: 20; }
+  .sheet.open { display: flex; flex-direction: column; justify-content: flex-end; }
+  .sheet .body { background: var(--panel); border-radius: 16px 16px 0 0; padding: 14px 18px calc(18px + var(--safe-b)); max-height: 85dvh; overflow-y: auto; }
+  .sheet h2 { font-size: 15px; margin: 4px 0 14px; display: flex; justify-content: space-between; align-items: center; }
+  .field { margin: 0 0 16px; }
+  .field label { display: flex; justify-content: space-between; font-size: 13px; color: var(--dim); margin-bottom: 6px; }
+  .field label output { color: var(--fg); font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .toggle { display: flex; justify-content: space-between; align-items: center; font-size: 14px; padding: 6px 0 14px; }
+  .toggle input { width: 20px; height: 20px; accent-color: var(--accent); }
+  .note { font-size: 12px; color: var(--dim); line-height: 1.6; }
+  #viewer { position: fixed; inset: 0; background: #000; z-index: 30; display: none; flex-direction: column; padding-top: var(--safe-t); padding-bottom: var(--safe-b); }
+  #viewer.open { display: flex; }
+  #viewer .img-wrap { flex: 1; min-height: 0; display: grid; place-items: center; padding: 10px; }
+  #viewer img { max-width: 100%; max-height: 100%; object-fit: contain; -webkit-touch-callout: default; user-select: auto; -webkit-user-select: auto; }
+  #viewer .bar { display: flex; gap: 10px; justify-content: center; padding: 12px; flex-wrap: wrap; }
+  #viewer .tip { text-align: center; font-size: 12px; color: var(--dim); padding: 0 16px 8px; }
+  #grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+  #grid img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 4px; }
+  #toast { position: fixed; left: 50%; bottom: calc(130px + var(--safe-b)); transform: translateX(-50%); background: #000d; padding: 8px 14px; border-radius: 18px; font-size: 13px; z-index: 40; display: none; white-space: nowrap; }
+  #flash { position: fixed; inset: 0; background: #fff; opacity: 0; pointer-events: none; transition: opacity .25s; z-index: 15; }
+  .hidden-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+</style>
+</head>
+<body>
+<header>
+  <button class="icon-btn" id="importBtn" title="匯入照片" aria-label="匯入照片">
+    <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/></svg>
+  </button>
+  <h1>FILM CAM</h1>
+  <button class="icon-btn" id="settingsBtn" title="調整" aria-label="調整">
+    <svg viewBox="0 0 24 24"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>
+  </button>
+</header>
+
+<div id="viewfinder">
+  <div id="stage">
+    <canvas id="preview"></canvas>
+    <div id="stamp"></div>
+  </div>
+  <div id="hint"></div>
+</div>
+
+<button id="sceneBar" aria-label="選擇場景"></button>
+<div id="lookName"></div>
+<div id="looks"></div>
+
+<div id="controls">
+  <button id="thumb" aria-label="已拍照片"></button>
+  <button id="shutter" aria-label="快門"><span></span></button>
+  <button class="icon-btn" id="flip" aria-label="切換鏡頭">
+    <svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><path d="M9.5 13.5a2.5 2.5 0 0 0 4.6 1.3M14.5 12.5a2.5 2.5 0 0 0-4.6-1.3"/><path d="M14.3 15.2l-.2-.4.5-.1M9.7 10.8l.2.4-.5.1"/></svg>
+  </button>
+</div>
+
+<div id="scenePanel" role="dialog" aria-label="這張照片是什麼場景">
+  <div class="scrollWrap"><div class="scroll" id="sceneGroups"></div><div class="more" id="sceneMore">往下滑還有更多選項 ↓</div></div>
+  <div class="rec">
+    <div class="why" id="sceneWhy"></div>
+    <div class="row"><div class="recLooks" id="recLooks"></div></div>
+    <div class="acts"><button class="pill" id="sceneClear">全部清除</button><button class="pill primary" id="sceneDone">完成</button></div>
+  </div>
+</div>
+
+<input type="file" accept="image/*" id="fileInput" class="hidden-input">
+<input type="file" accept="image/*" capture="environment" id="captureInput" class="hidden-input">
+
+<div class="sheet" id="settingsSheet">
+  <div class="body">
+    <h2>調整 <button class="pill" data-close>完成</button></h2>
+    <div class="field"><label>濾鏡強度 <output id="o_strength"></output></label><input type="range" id="s_strength" min="0" max="100" step="1"></div>
+    <div class="field"><label>曝光（檔） <output id="o_exposure"></output></label><input type="range" id="s_exposure" min="-1" max="1" step="0.05"></div>
+    <div class="field"><label>色溫 <output id="o_temp"></output></label><input type="range" id="s_temp" min="-1" max="1" step="0.05"></div>
+    <div class="field"><label>顆粒 <output id="o_grain"></output></label><input type="range" id="s_grain" min="0" max="200" step="5"></div>
+    <div class="field"><label>暈光 Halation <output id="o_halation"></output></label><input type="range" id="s_halation" min="0" max="200" step="5"></div>
+    <div class="field"><label>暗角（加強） <output id="o_vignette"></output></label><input type="range" id="s_vignette" min="0" max="100" step="5"></div>
+    <div class="toggle"><span>日期戳記</span><input type="checkbox" id="s_stamp"></div>
+    <div class="toggle"><span>依場景微調色彩<br><small style="color:var(--dim);font-size:12px">例如壓住紅葉不爆色、人像膚色提亮</small></span><input type="checkbox" id="sceneTweak"></div>
+    <p class="note">每種底片風格都有自己的預設值，上面的滑桿是在那個基礎上再加減。暗角和日期戳記是裝飾效果，不屬於底片色調本身。</p>
+    <button class="pill" id="resetBtn">重設為預設值</button>
+  </div>
+</div>
+
+<div class="sheet" id="gallerySheet">
+  <div class="body">
+    <h2>這次拍的照片 <button class="pill" data-close>關閉</button></h2>
+    <div id="grid"></div>
+    <p class="note">照片只暫存在這個頁面，關掉就會消失，記得存檔。</p>
+  </div>
+</div>
+
+<div id="viewer">
+  <div class="img-wrap"><img id="viewerImg" alt="成品"></div>
+  <div class="tip">也可以長按圖片存到相簿</div>
+  <div class="bar">
+    <button class="pill primary" id="shareBtn">分享／存到相簿</button>
+    <button class="pill" id="downloadBtn">下載</button>
+    <button class="pill" id="closeViewer">返回</button>
+  </div>
+</div>
+
+<div id="flash"></div>
+<div id="toast"></div>
+
+<script>
+"use strict";
+
+/* ---------------------------------------------------------------
+   底片風格參數（依據研究文件「Film Cam 場景推薦研究」）
+   hsl：8 個色相區段 [色相位移, 飽和度增減, 亮度增減]
+   色相位移以整圈 = 1 計，0.02 ≈ 7°
+---------------------------------------------------------------- */
+const BANDS = ['red', 'orange', 'yellow', 'green', 'aqua', 'blue', 'purple', 'magenta'];
+const BAND_NAMES = { red: '紅', orange: '橘', yellow: '黃', green: '綠', aqua: '青', blue: '藍', purple: '紫', magenta: '洋紅' };
+const zeroHSL = () => Object.fromEntries(BANDS.map(b => [b, [0, 0, 0]]));
+const BASE = {
+  exposure: 0, temp: 0, tint: 0, sat: 1, fade: 0, white: 1, contrast: 0, shoulder: 0.35,
+  shadowTint: [0, 0, 0], highTint: [0, 0, 0],
+  chrome: 0, grain: 0.25, grainSize: 1, halation: 0.12, bloom: 0, vignette: 0.12, mono: 0, soft: 0
+};
+
+const LOOKS = [
+  { id: 'portra', name: '柔和暖調', ref: '參考 Kodak Portra 400', p: {
+      exposure: 0.1, temp: 0.22, sat: 0.88, fade: 0.05, white: 0.97, contrast: -0.12, shoulder: 0.55,
+      shadowTint: [-0.006, 0.0, 0.014], highTint: [0.022, 0.008, -0.014],
+      hsl: { orange: [0, -0.06, 0.08], yellow: [0, -0.05, 0], green: [-0.015, -0.15, 0], blue: [0, -0.12, 0] },
+      grain: 0.2, grainSize: 0.9, halation: 0.12, soft: 0.15 } },
+  { id: 'gold', name: '復古暖黃', ref: '參考 Kodak Gold 200', p: {
+      temp: 0.4, sat: 1.08, fade: 0.03, contrast: 0.22, shoulder: 0.35,
+      shadowTint: [0.006, 0.0, -0.012], highTint: [0.026, 0.016, -0.028],
+      hsl: { red: [0, 0.05, 0], orange: [0, 0.12, 0], yellow: [0, 0.08, 0], green: [-0.02, 0, 0], blue: [0, -0.06, 0] },
+      grain: 0.34, grainSize: 1.1, halation: 0.18, vignette: 0.16 } },
+  { id: 'superia', name: '冷調綠影', ref: '參考 Fujifilm Superia 400', p: {
+      temp: -0.15, sat: 1.08, fade: 0.02, contrast: 0.32, shoulder: 0.3,
+      shadowTint: [-0.012, 0.02, 0.0], highTint: [0.012, -0.006, 0.01],
+      hsl: { green: [0.02, 0.15, -0.07] },
+      grain: 0.36, grainSize: 1.0, halation: 0.12 } },
+  { id: 'pro400h', name: '過曝粉彩', ref: '參考 Fujifilm Pro 400H 過曝', p: {
+      exposure: 0.45, temp: -0.1, sat: 0.82, fade: 0.06, white: 0.98, contrast: -0.18, shoulder: 0.75,
+      shadowTint: [-0.006, 0.006, 0.014], highTint: [0.004, 0.004, 0.0],
+      hsl: { orange: [0, 0, 0.05], green: [0.04, -0.1, 0.08], aqua: [0, 0, 0.05], blue: [0, -0.15, 0.08] },
+      grain: 0.16, grainSize: 0.9, halation: 0.1, soft: 0.1 } },
+  { id: 'vivid', name: '鮮豔正片', ref: '參考 Fujifilm Velvia', p: {
+      sat: 1.25, contrast: 0.35, shoulder: 0.3, chrome: 0.45,
+      hsl: { red: [0, -0.05, 0], orange: [0, -0.05, 0], green: [0.015, 0.05, 0], blue: [0.015, 0.1, 0] },
+      grain: 0.12, grainSize: 0.9, halation: 0.05, vignette: 0.1 } },
+  { id: 'classicneg', name: '經典負片', ref: '參考富士 Classic Negative', p: {
+      sat: 0.85, fade: 0.03, contrast: 0.35, shoulder: 0.4,
+      shadowTint: [-0.014, 0.02, 0.004], highTint: [0.022, -0.004, -0.01],
+      chrome: 0.3, grain: 0.26, halation: 0.1 } },
+  { id: 'classicchrome', name: '經典正片', ref: '參考富士 Classic Chrome', p: {
+      temp: 0.05, sat: 0.75, fade: 0.02, contrast: 0.26, shoulder: 0.3,
+      shadowTint: [-0.008, 0.0, 0.014], highTint: [0.008, 0.004, -0.004],
+      hsl: { blue: [0, -0.08, 0], purple: [0, -0.2, 0], magenta: [0, -0.35, 0] },
+      chrome: 0.4, grain: 0.2, halation: 0.06 } },
+  { id: 'night', name: '電影夜色', ref: '參考 CineStill 800T', p: {
+      temp: -0.45, sat: 1.0, fade: 0.03, contrast: 0.18, shoulder: 0.45,
+      shadowTint: [-0.02, 0.008, 0.014], highTint: [0.024, 0.008, -0.014],
+      hsl: { orange: [0, 0.12, 0], aqua: [0, 0.05, 0], blue: [-0.03, 0, 0] },
+      grain: 0.45, grainSize: 1.15, halation: 0.55, vignette: 0.14 } },
+  { id: 'mono', name: '黑白粗顆粒', ref: '參考 Kodak Tri-X 400', p: {
+      mono: 1, contrast: 0.45, fade: 0.02, shoulder: 0.3, grain: 0.55, grainSize: 1.25, halation: 0, vignette: 0.16 } }
+];
+LOOKS.forEach(l => { const h = Object.assign(zeroHSL(), l.p.hsl || {}); l.p = Object.assign({}, BASE, l.p, { hsl: h }); });
+const lookIndex = id => LOOKS.findIndex(l => l.id === id);
+
+/* ---------------------------------------------------------------
+   場景選單：使用者勾選 → 推薦風格（score）＋ 場景微調（tweak）
+   tweak 的 key：一般參數名，或「色相區段.h/s/l」
+---------------------------------------------------------------- */
+const SCENE_GROUPS = [
+  { key: 'subject', title: '主要拍什麼', note: '單選', single: true, help: '人像＝臉是重點（寵物也選這個）；人＋景＝旅遊打卡，風景才是重點', options: [
+    { id: 'person', label: '人像', hint: '人物是主角，臉清楚可見（自拍、合照、聚會）',
+      score: { portra: 3, pro400h: 1, gold: 1, classicchrome: 1, superia: -2, vivid: -3 },
+      tweak: { exposure: 0.3, contrast: -0.08, 'orange.s': -0.1, 'orange.l': 0.1 }, why: '人像：膚色優先，畫面偏亮、對比低' },
+    { id: 'both', label: '人＋景', hint: '人在景裡，但風景才是重點（旅遊打卡）',
+      score: { portra: 2, gold: 1, classicchrome: 1, vivid: -1 },
+      tweak: { exposure: 0.15, 'orange.s': -0.05, 'orange.l': 0.05 }, why: '人＋景：兼顧膚色與景色' },
+    { id: 'scenery', label: '風景・建築', hint: '沒有人，或人很小看不清楚',
+      score: { vivid: 1, superia: 1, classicchrome: 1 }, why: '' },
+    { id: 'food', label: '美食・小物', hint: '食物、飲料、商品、桌上小東西',
+      score: { portra: 2, gold: 1, mono: -3, night: -1, superia: -1 },
+      tweak: { exposure: 0.2 }, why: '美食：明亮、看起來可口' }
+  ] },
+  { key: 'light', title: '光線', note: '單選', single: true, help: '靠窗的白天自然光，選「白天晴天」或「陰天・雨天」', options: [
+    { id: 'sunny', label: '白天晴天', hint: '',
+      score: { gold: 1, classicchrome: 1, superia: 1, vivid: 1, night: -3 }, why: '' },
+    { id: 'overcast', label: '陰天・雨天', hint: '',
+      score: { classicchrome: 3, mono: 2, classicneg: 1, gold: -1, night: -2 },
+      tweak: { fade: 0.04 }, why: '陰天：黑位抬起、色彩收斂，讓情緒出來' },
+    { id: 'golden', label: '日出・黃昏', hint: '太陽很低、光線偏金黃',
+      score: { gold: 3, portra: 2, classicchrome: -3, night: -2 },
+      tweak: { temp: 0.2 }, why: '黃昏：手機會把金黃色中和掉，補回暖色' },
+    { id: 'indoor', label: '室內燈光', hint: '餐廳、家裡、聚會現場',
+      score: { classicchrome: 2, portra: 1, night: 1, gold: -2 },
+      tweak: { temp: -0.15 }, why: '室內：燈光已經偏暖，不再加暖' },
+    { id: 'night', label: '夜晚戶外', hint: '街燈、夜景',
+      score: { night: 4, mono: 2, portra: -1, gold: -1, pro400h: -2, vivid: -1 }, why: '夜晚：陰影偏青、燈光保留橘色與光暈' }
+  ] },
+  { key: 'things', title: '畫面裡有', note: '可複選，沒有就不選', single: false, help: '', options: [
+    { id: 'green', label: '綠葉・草地', hint: '',
+      score: { superia: 2, pro400h: 1 }, tweak: { 'green.s': -0.1, 'green.l': 0.05, 'yellow.s': -0.05 }, why: '綠葉：降飽和、提亮，避免螢光綠' },
+    { id: 'yellowleaf', label: '黃葉・銀杏', hint: '',
+      score: { vivid: 3, gold: 1, mono: -3 }, tweak: { temp: 0.15, chrome: 0.3, 'green.s': -0.15, 'blue.s': -0.15, 'yellow.h': -0.008, 'yellow.s': 0.05 },
+      why: '黃葉：黃色微偏橘，壓低其他顏色突顯主角' },
+    { id: 'redleaf', label: '紅葉・楓葉', hint: '',
+      score: { vivid: 3, gold: 1, mono: -3 }, tweak: { temp: 0.15, chrome: 0.3, 'green.s': -0.15, 'blue.s': -0.15, 'red.l': -0.05 },
+      why: '紅葉：壓住紅色不爆色，保留葉子層次' },
+    { id: 'sakura', label: '櫻花・花', hint: '',
+      score: { vivid: 3, pro400h: 1, classicchrome: -2, mono: -3 }, why: '櫻花：保留粉紅色，不用會壓洋紅的風格' },
+    { id: 'snow', label: '雪景', hint: '',
+      score: { classicchrome: 1, mono: 1, portra: 1, gold: -1 }, tweak: { exposure: 0.35, temp: 0.08, contrast: -0.08 },
+      why: '雪景：補曝光讓雪變白，稍微加暖避免雪偏藍' },
+    { id: 'sea', label: '海・藍天', hint: '',
+      score: { classicneg: 2, vivid: 1 }, tweak: { 'blue.l': -0.05, 'aqua.l': -0.03 }, why: '海與天空：藍色稍微壓深，層次更多' },
+    { id: 'street', label: '街道・街景', hint: '',
+      score: { classicchrome: 2, classicneg: 1, mono: 1 }, why: '街道：收斂的紀實色彩' },
+    { id: 'concrete', label: '水泥・清水模', hint: '',
+      score: { mono: 3, classicchrome: 2, gold: -1 }, tweak: { 'blue.s': -0.2, 'green.s': -0.2 }, why: '清水模：讓灰色保持中性，不被天空染藍' },
+    { id: 'glass', label: '玻璃大樓', hint: '',
+      score: { classicchrome: 2, superia: 1, gold: -2 }, tweak: { 'blue.s': -0.05 }, why: '玻璃建築：冷色乾淨，不加暖' },
+    { id: 'brick', label: '紅磚・老房子', hint: '',
+      score: { gold: 2, portra: 1 }, tweak: { 'red.s': -0.1, 'red.h': 0.01 }, why: '紅磚：保留暖色，但紅色不過飽和' },
+    { id: 'neon', label: '霓虹・燈飾', hint: '',
+      score: { night: 3 }, why: '霓虹：適合電影感的光暈' }
+  ] }
+];
+const SCENE_OPT = {};
+SCENE_GROUPS.forEach(g => g.options.forEach(o => { SCENE_OPT[o.id] = Object.assign({ group: g.key }, o); }));
+const TIE = { portra: 0.3, classicchrome: 0.2, gold: 0.1 };
+const CLAMP = { exposure: 0.4, temp: 0.25, contrast: 0.15, fade: 0.06, chrome: 0.4, h: 0.03, s: 0.25, l: 0.15 };
+
+function sceneSelected(scene) {
+  return [scene.subject, scene.light, ...(scene.things || [])].filter(Boolean).map(id => SCENE_OPT[id]).filter(Boolean);
+}
+function recommend(scene) {
+  const sel = sceneSelected(scene);
+  if (!sel.length) return { looks: [], tweak: {}, why: [] };
+  const score = {};
+  LOOKS.forEach(l => score[l.id] = TIE[l.id] || 0);
+  sel.forEach(o => Object.entries(o.score || {}).forEach(([k, v]) => score[k] += v));
+  // 規則：有人像＋黃昏 → 再壓一點橘色（直射夕陽會讓膚色太橘）
+  const tweak = {};
+  const add = (k, v) => tweak[k] = (tweak[k] || 0) + v;
+  sel.forEach(o => Object.entries(o.tweak || {}).forEach(([k, v]) => {
+    // 室內或夜晚時，不採用葉子的「加暖」
+    if (k === 'temp' && o.group === 'things' && (scene.light === 'indoor' || scene.light === 'night')) return;
+    add(k, v);
+  }));
+  if ((scene.subject === 'person' || scene.subject === 'both') && scene.light === 'golden') add('orange.s', -0.1);
+  Object.keys(tweak).forEach(k => {
+    const lim = CLAMP[k] != null ? CLAMP[k] : CLAMP[k.split('.')[1]];
+    if (lim != null) tweak[k] = Math.max(-lim, Math.min(lim, tweak[k]));
+  });
+  const looks = Object.entries(score).sort((a, b) => b[1] - a[1]).filter(([, s]) => s > 0.5).slice(0, 3).map(([id]) => id);
+  const why = sel.map(o => o.why).filter(Boolean);
+  return { looks, tweak, why };
+}
+function applyTweak(p, tweak) {
+  for (const [k, v] of Object.entries(tweak)) {
+    if (k.includes('.')) {
+      const [band, ch] = k.split('.');
+      const i = { h: 0, s: 1, l: 2 }[ch];
+      p.hsl[band] = p.hsl[band].slice(); p.hsl[band][i] += v;
+    } else p[k] = (p[k] || 0) + v;
+  }
+  return p;
+}
+
+const USER_DEFAULT = { strength: 100, exposure: 0, temp: 0, grain: 100, halation: 100, vignette: 0, stamp: false };
+
+/* ---------------- WebGL 濾鏡渲染器 ---------------- */
+const VS = `#version 300 es
+in vec2 aPos; out vec2 vUv;
+void main(){ vUv = aPos*0.5+0.5; gl_Position = vec4(aPos,0.,1.); }`;
+
+const FS = `#version 300 es
+precision highp float;
+in vec2 vUv; out vec4 o;
+uniform sampler2D uTex;
+uniform vec2 uRes;
+uniform float uSeed, uExposure, uSat, uFade, uWhite, uContrast, uShoulder;
+uniform vec3 uWB, uShadowTint, uHighTint;
+uniform vec3 uHSL[8];
+const float HC[9] = float[9](0.0, 30./360., 58./360., 120./360., 180./360., 220./360., 275./360., 320./360., 1.0);
+uniform float uChrome, uGrain, uGrainCell, uHalation, uBloom, uVignette, uMono, uSoft, uStrength;
+uniform float uLodHal, uLodSoft, uFlipX;
+
+vec3 toLin(vec3 c){ return pow(max(c,0.0), vec3(2.2)); }
+vec3 toGam(vec3 c){ return pow(max(c,0.0), vec3(1.0/2.2)); }
+vec3 rgb2hsv(vec3 c){
+  vec4 K = vec4(0., -1./3., 2./3., -1.);
+  vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
+  vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
+  float d = q.x - min(q.w, q.y); float e = 1e-10;
+  return vec3(abs(q.z + (q.w - q.y)/(6.*d+e)), d/(q.x+e), q.x);
+}
+vec3 hsv2rgb(vec3 c){
+  vec3 p = abs(fract(c.xxx + vec3(1., 2./3., 1./3.))*6. - 3.);
+  return c.z * mix(vec3(1.), clamp(p-1., 0., 1.), c.y);
+}
+float band(float h, float center, float width){
+  float d = abs(fract(h - center + 0.5) - 0.5);
+  return clamp(1. - d/width, 0., 1.);
+}
+float hash(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
+float vnoise(vec2 p){
+  vec2 i = floor(p), f = fract(p); f = f*f*(3.-2.*f);
+  float a = hash(i), b = hash(i+vec2(1,0)), c = hash(i+vec2(0,1)), d = hash(i+vec2(1,1));
+  return mix(mix(a,b,f.x), mix(c,d,f.x), f.y);
+}
+vec3 blurAt(vec2 uv, float lod){
+  vec2 ts = exp2(lod) / vec2(textureSize(uTex, 0)) * 0.8;
+  return (textureLod(uTex, uv + vec2( ts.x, ts.y), lod).rgb + textureLod(uTex, uv + vec2(-ts.x, ts.y), lod).rgb
+        + textureLod(uTex, uv + vec2( ts.x,-ts.y), lod).rgb + textureLod(uTex, uv + vec2(-ts.x,-ts.y), lod).rgb) * 0.25;
+}
+void main(){
+  vec2 uv = vUv; if (uFlipX > 0.5) uv.x = 1. - uv.x;
+  vec3 src = texture(uTex, uv).rgb;
+  vec3 lin = toLin(src);
+  if (uSoft > 0.) lin = mix(lin, toLin(blurAt(uv, uLodSoft)), uSoft);
+  float ex = exp2(uExposure);
+  lin *= ex * uWB;
+  if (uHalation > 0. || uBloom > 0.) {
+    vec3 b = (toLin(blurAt(uv, uLodHal)) + toLin(blurAt(uv, uLodHal + 1.5))) * 0.5 * ex * uWB;
+    float bl = dot(b, vec3(.2126, .7152, .0722));
+    float hl = smoothstep(0.35, 1.0, bl);
+    lin += uHalation * hl * vec3(1.0, 0.32, 0.1) * 0.9;
+    lin += uBloom * max(b - 0.4, 0.) * 0.5;
+  }
+  vec3 c = toGam(lin);
+  float knee = 1. - 0.45 * uShoulder;
+  vec3 rolled = knee + (1. - knee) * tanh((c - knee) / (1. - knee));
+  c = mix(c, rolled, step(vec3(knee), c));
+  c = clamp(c, 0., 1.);
+  c = clamp(mix(c, c*c*(3.-2.*c), uContrast), 0., 1.);
+
+  vec3 hsv = rgb2hsv(c);
+  float sw = smoothstep(0.04, 0.3, hsv.y);
+  // 8 個色相區段之間線性內插（紅→橘→黃→綠→青→藍→紫→洋紅→紅）
+  vec3 adj = vec3(0.);
+  for (int i = 0; i < 8; i++) {
+    float a = HC[i], b = HC[i + 1];
+    if (hsv.x >= a && hsv.x < b) adj = mix(uHSL[i], uHSL[(i + 1) % 8], (hsv.x - a) / (b - a));
+  }
+  adj *= sw;
+  hsv.x = fract(hsv.x + adj.x);
+  hsv.y = clamp(hsv.y * max(0., 1. + adj.y), 0., 1.);
+  hsv.z *= 1. + adj.z;
+  c = hsv2rgb(hsv);
+
+  float L = dot(c, vec3(.299, .587, .114));
+  c = mix(vec3(L), c, uSat);
+  float sat = max(max(c.r, c.g), c.b) - min(min(c.r, c.g), c.b);
+  c *= 1. - uChrome * sat * sat * 0.45;
+  L = dot(c, vec3(.299, .587, .114));
+  c += (uShadowTint * (1.-L)*(1.-L) + uHighTint * L*L) * 1.6;
+  c = mix(c, vec3(dot(c, vec3(.3, .59, .11))), uMono);
+  c = mix(vec3(uFade), vec3(uWhite), clamp(c, 0., 1.));
+
+  float asp = uRes.x / uRes.y;
+  vec2 d = (vUv - .5) * vec2(asp, 1.);
+  float r = length(d) / length(vec2(0.5 * asp, 0.5));
+  c *= 1. - uVignette * smoothstep(0.35, 1.05, r);
+
+  vec2 gp = vUv * uRes / uGrainCell + uSeed * vec2(17.13, 41.7);
+  float g = (vnoise(gp) + 0.5 * vnoise(gp * 2.07 + 5.3)) / 1.5 - 0.5;
+  vec3 gc = vec3(g) + 0.3 * (vec3(vnoise(gp + 11.1), vnoise(gp + 23.7), vnoise(gp + 37.3)) - 0.5) * (1. - uMono);
+  L = dot(c, vec3(.299, .587, .114));
+  c += gc * uGrain * 0.3 * (0.3 + 3.0 * L * (1. - L));
+  c = clamp(c, 0., 1.);
+  o = vec4(mix(src, c, uStrength), 1.);
+}`;
+
+class FilmRenderer {
+  constructor(canvas, preserve) {
+    this.canvas = canvas;
+    const gl = canvas.getContext('webgl2', { premultipliedAlpha: false, preserveDrawingBuffer: !!preserve, antialias: false });
+    if (!gl) throw new Error('NO_WEBGL2');
+    this.gl = gl;
+    const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+    const prog = gl.createProgram();
+    gl.attachShader(prog, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FS));
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+    this.prog = prog; gl.useProgram(prog);
+    const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+    const loc = gl.getAttribLocation(prog, 'aPos'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+    this.tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, this.tex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    this.u = {};
+    const n = gl.getProgramParameter(prog, gl.ACTIVE_UNIFORMS);
+    for (let i = 0; i < n; i++) { const info = gl.getActiveUniform(prog, i); this.u[info.name] = gl.getUniformLocation(prog, info.name); }
+    this.maxTex = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+    this.srcW = 0; this.srcH = 0;
+  }
+  setSource(src, w, h) {
+    const gl = this.gl;
+    gl.bindTexture(gl.TEXTURE_2D, this.tex);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src);
+    gl.generateMipmap(gl.TEXTURE_2D);
+    this.srcW = w; this.srcH = h;
+  }
+  render(p, w, h, opt) {
+    const gl = this.gl, u = this.u;
+    if (this.canvas.width !== w) this.canvas.width = w;
+    if (this.canvas.height !== h) this.canvas.height = h;
+    gl.viewport(0, 0, w, h);
+    gl.useProgram(this.prog);
+    const maxDim = Math.max(this.srcW, this.srcH) || 1;
+    const t = p.temp, tint = p.tint;
+    gl.uniform1i(u.uTex, 0);
+    gl.uniform2f(u.uRes, w, h);
+    gl.uniform1f(u.uSeed, opt.seed || 0);
+    gl.uniform1f(u.uExposure, p.exposure);
+    gl.uniform3f(u.uWB, 1 + 0.12 * t, 1 - 0.04 * tint, 1 - 0.12 * t);
+    gl.uniform1f(u.uSat, p.sat); gl.uniform1f(u.uFade, p.fade); gl.uniform1f(u.uWhite, p.white);
+    gl.uniform1f(u.uContrast, p.contrast); gl.uniform1f(u.uShoulder, p.shoulder);
+    gl.uniform3fv(u.uShadowTint, p.shadowTint); gl.uniform3fv(u.uHighTint, p.highTint);
+    gl.uniform3fv(u['uHSL[0]'], new Float32Array(BANDS.flatMap(b => p.hsl[b])));
+    gl.uniform1f(u.uChrome, p.chrome); gl.uniform1f(u.uGrain, p.grain);
+    gl.uniform1f(u.uGrainCell, Math.max(1, p.grainSize * Math.min(w, h) / 1100));
+    gl.uniform1f(u.uHalation, p.halation); gl.uniform1f(u.uBloom, p.bloom);
+    gl.uniform1f(u.uVignette, p.vignette); gl.uniform1f(u.uMono, p.mono); gl.uniform1f(u.uSoft, p.soft);
+    gl.uniform1f(u.uStrength, opt.strength == null ? 1 : opt.strength);
+    gl.uniform1f(u.uLodHal, Math.log2(Math.max(1, 0.006 * maxDim)));
+    gl.uniform1f(u.uLodSoft, Math.log2(Math.max(1, 0.0012 * maxDim)));
+    gl.uniform1f(u.uFlipX, opt.flipX ? 1 : 0);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+}
+
+/* ---------------- App 狀態 ---------------- */
+const $ = id => document.getElementById(id);
+const els = { preview: $('preview'), stage: $('stage'), vf: $('viewfinder'), hint: $('hint'), stamp: $('stamp'),
+  looks: $('looks'), lookName: $('lookName'), shutter: $('shutter'), thumb: $('thumb'), flip: $('flip') };
+
+const store = { get(k, d) { try { const v = localStorage.getItem('filmcam.' + k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
+                set(k, v) { try { localStorage.setItem('filmcam.' + k, JSON.stringify(v)); } catch (e) {} } };
+
+const state = {
+  mode: 'none',           // 'camera' | 'edit' | 'none'
+  lookIdx: Math.max(0, lookIndex(store.get('lookId', 'portra'))),
+  scene: Object.assign({ subject: null, light: null, things: [] }, store.get('scene', {})),
+  sceneTweak: store.get('sceneTweak', true),
+  user: Object.assign({}, USER_DEFAULT, store.get('user', {})),
+  facing: 'environment',
+  stream: null, video: null, editBitmap: null, editBlob: null,
+  shots: [], busy: false, seed: 1, cameraError: null
+};
+
+let renderer;
+try { renderer = new FilmRenderer(els.preview, false); }
+catch (e) { showHint('這個瀏覽器不支援 WebGL2，沒辦法套用濾鏡。<br>請用新版的 Chrome 或 Safari 開啟。'); throw e; }
+
+function effectiveParams() {
+  const base = LOOKS[state.lookIdx].p, u = state.user;
+  const p = Object.assign({}, base, { hsl: Object.assign({}, base.hsl) });
+  if (state.sceneTweak) applyTweak(p, recommend(state.scene).tweak);
+  p.exposure += u.exposure; p.temp += u.temp;
+  p.grain *= u.grain / 100; p.halation *= u.halation / 100;
+  p.vignette = Math.min(1, p.vignette + u.vignette / 100);
+  return p;
+}
+
+/* ---------------- 版面 ---------------- */
+function srcSize() {
+  if (state.mode === 'camera' && state.video && state.video.videoWidth) return [state.video.videoWidth, state.video.videoHeight];
+  if (state.mode === 'edit' && state.editBitmap) return [state.editBitmap.width, state.editBitmap.height];
+  return [3, 4];
+}
+function layout() {
+  const [sw, sh] = srcSize();
+  const box = els.vf.getBoundingClientRect();
+  const pad = 12, bw = box.width - pad * 2, bh = box.height - pad * 2;
+  const s = Math.min(bw / sw, bh / sh);
+  const cw = Math.round(sw * s), ch = Math.round(sh * s);
+  els.stage.style.width = cw + 'px'; els.stage.style.height = ch + 'px';
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  let pw = Math.round(cw * dpr), ph = Math.round(ch * dpr);
+  const cap = 1400 / Math.max(pw, ph); if (cap < 1) { pw = Math.round(pw * cap); ph = Math.round(ph * cap); }
+  state.pw = pw; state.ph = ph;
+  els.stamp.style.fontSize = Math.max(10, ch * 0.038) + 'px';
+}
+window.addEventListener('resize', () => { layout(); requestRender(); });
+
+function stampText(d = new Date()) {
+  const p = n => String(n).padStart(2, '0');
+  return `'${p(d.getFullYear() % 100)} ${p(d.getMonth() + 1)} ${p(d.getDate())}`;
+}
+function updateStamp() {
+  els.stamp.style.display = state.user.stamp && state.mode !== 'none' ? 'block' : 'none';
+  els.stamp.textContent = stampText();
+}
+
+/* ---------------- 渲染迴圈 ---------------- */
+let renderQueued = false;
+function requestRender() { if (!renderQueued) { renderQueued = true; requestAnimationFrame(frame); } }
+function frame() {
+  renderQueued = false;
+  const p = effectiveParams(), strength = state.user.strength / 100;
+  if (state.mode === 'camera') {
+    const v = state.video;
+    if (v && v.readyState >= 2 && v.videoWidth) {
+      if (!state.pw || state.lastVW !== v.videoWidth) { state.lastVW = v.videoWidth; layout(); }
+      renderer.setSource(v, v.videoWidth, v.videoHeight);
+      state.seed = (state.seed + 1) % 97;
+      renderer.render(p, state.pw, state.ph, { seed: state.seed, strength, flipX: state.facing === 'user' });
+    }
+    requestRender();
+  } else if (state.mode === 'edit' && state.editPreview) {
+    renderer.render(p, state.pw, state.ph, { seed: 3, strength });
+  }
+}
+
+/* ---------------- 相機 ---------------- */
+async function startCamera() {
+  stopCamera();
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('NO_GUM');
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: state.facing, width: { ideal: 2560 }, height: { ideal: 1920 } }, audio: false });
+  const v = state.video || document.createElement('video');
+  v.setAttribute('playsinline', ''); v.muted = true; v.srcObject = stream;
+  await v.play();
+  state.video = v; state.stream = stream; state.mode = 'camera'; state.lastVW = 0;
+  hideHint(); setShutterLabel(); updateStamp(); updateSceneBar(); layout(); requestRender();
+}
+function stopCamera() {
+  if (state.stream) state.stream.getTracks().forEach(t => t.stop());
+  state.stream = null;
+}
+async function grabFullRes() {
+  const track = state.stream && state.stream.getVideoTracks()[0];
+  if (track && 'ImageCapture' in window) {
+    try {
+      const ic = new ImageCapture(track);
+      // 部分裝置的 takePhoto 會卡住，超過 4 秒就改用預覽畫面截圖
+      const blob = await Promise.race([ic.takePhoto(), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 4000))]);
+      return await decodeImage(blob);
+    } catch (e) { /* 改用畫面截取 */ }
+  }
+  return await createImageBitmap(state.video);
+}
+
+/* ---------------- 匯入 / 編輯模式 ---------------- */
+async function decodeImage(blob) {
+  try { return await createImageBitmap(blob, { imageOrientation: 'from-image' }); }
+  catch (e) {
+    const url = URL.createObjectURL(blob);
+    try { const img = new Image(); img.src = url; await img.decode(); return img; } finally { setTimeout(() => URL.revokeObjectURL(url), 2000); }
+  }
+}
+async function openImage(file) {
+  if (!file) return;
+  try {
+    const bmp = await decodeImage(file);
+    stopCamera();
+    state.editBitmap = bmp; state.mode = 'edit';
+    layout();
+    // 預覽用縮小版（比照預覽畫布大小）
+    const k = Math.min(1, 1400 / Math.max(bmp.width, bmp.height));
+    const pc = document.createElement('canvas'); pc.width = Math.round(bmp.width * k); pc.height = Math.round(bmp.height * k);
+    pc.getContext('2d').drawImage(bmp, 0, 0, pc.width, pc.height);
+    renderer.setSource(pc, pc.width, pc.height);
+    state.editPreview = true;
+    if (!document.body.classList.contains('scene-open')) openScenePanel();
+    if (sceneSummary()) toast('沿用上一張的場景，不同的話請改選');
+    hideHint(); setShutterLabel(); updateStamp(); requestRender();
+  } catch (e) { toast('讀不到這張照片'); }
+}
+
+/* ---------------- 輸出全解析度 ---------------- */
+let exportRenderer = null;
+async function exportImage(bmp, flipX) {
+  if (!exportRenderer) exportRenderer = new FilmRenderer(document.createElement('canvas'), true);
+  const limit = Math.min(exportRenderer.maxTex, 4096);
+  let w = bmp.width, h = bmp.height;
+  const k = Math.min(1, limit / Math.max(w, h));
+  w = Math.round(w * k); h = Math.round(h * k);
+  // 一律先畫到 canvas：ImageBitmap 上傳時會忽略 UNPACK_FLIP_Y，直接用會上下顛倒
+  const src = document.createElement('canvas'); src.width = w; src.height = h;
+  src.getContext('2d').drawImage(bmp, 0, 0, w, h);
+  exportRenderer.setSource(src, w, h);
+  exportRenderer.render(effectiveParams(), w, h, { seed: Math.random() * 90, strength: state.user.strength / 100, flipX });
+  const out = document.createElement('canvas'); out.width = w; out.height = h;
+  const ctx = out.getContext('2d');
+  ctx.drawImage(exportRenderer.canvas, 0, 0);
+  if (state.user.stamp) {
+    const fs = Math.round(h * 0.038);
+    ctx.font = `700 ${fs}px "Courier New", ui-monospace, monospace`;
+    ctx.textAlign = 'right'; ctx.textBaseline = 'alphabetic';
+    const txt = stampText().split('').join(String.fromCharCode(8202));
+    ctx.shadowColor = 'rgba(255,90,0,0.8)'; ctx.shadowBlur = fs * 0.5; ctx.fillStyle = '#ff9a3c';
+    ctx.fillText(txt, w * 0.95, h * 0.955);
+    ctx.shadowBlur = fs * 0.15; ctx.fillText(txt, w * 0.95, h * 0.955);
+  }
+  return await new Promise(r => out.toBlob(r, 'image/jpeg', 0.92));
+}
+
+async function shoot() {
+  if (state.busy) return;
+  if (state.mode === 'none') { $('captureInput').click(); return; }
+  state.busy = true; els.shutter.classList.add('busy');
+  try {
+    let bmp, flip = false;
+    if (state.mode === 'camera') {
+      const f = $('flash'); f.style.transition = 'none'; f.style.opacity = '0.7';
+      requestAnimationFrame(() => { f.style.transition = 'opacity .3s'; f.style.opacity = '0'; });
+      bmp = await grabFullRes(); flip = state.facing === 'user';
+    } else bmp = state.editBitmap;
+    const blob = await exportImage(bmp, flip);
+    const shot = { blob, url: URL.createObjectURL(blob), name: `film_${Date.now()}.jpg` };
+    state.shots.unshift(shot);
+    els.thumb.style.backgroundImage = `url(${shot.url})`;
+    if (state.mode === 'edit') openViewer(shot); else toast('已拍下，點左下角看照片並存檔');
+  } catch (e) { console.error(e); toast('處理失敗：' + (e.message || e)); }
+  finally { state.busy = false; els.shutter.classList.remove('busy'); }
+}
+
+/* ---------------- 檢視 / 存檔 ---------------- */
+let current = null;
+function openViewer(shot) { current = shot; $('viewerImg').src = shot.url; $('viewer').classList.add('open'); }
+$('closeViewer').onclick = () => $('viewer').classList.remove('open');
+$('shareBtn').onclick = async () => {
+  if (!current) return;
+  const file = new File([current.blob], current.name, { type: 'image/jpeg' });
+  try {
+    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file] }); return; }
+  } catch (e) { if (e && e.name === 'AbortError') return; }
+  download();
+};
+let hostDownloads = null; // 在 claude.ai 預覽時用平台提供的下載功能
+if (window.claude && typeof window.claude.use === 'function') window.claude.use('downloads').then(d => { hostDownloads = d; }).catch(() => {});
+async function download() {
+  if (!current) return;
+  if (hostDownloads) {
+    try { await hostDownloads.save({ filename: current.name, data: current.blob }); toast('已存檔'); }
+    catch (e) { if (e && e.code !== 'declined') toast('沒辦法存檔，請長按圖片儲存'); }
+    return;
+  }
+  try { const a = document.createElement('a'); a.href = current.url; a.download = current.name; document.body.appendChild(a); a.click(); a.remove(); }
+  catch (e) { toast('這個環境不能下載，請長按圖片儲存'); }
+}
+$('downloadBtn').onclick = download;
+els.thumb.onclick = () => {
+  if (!state.shots.length) { toast('還沒有照片'); return; }
+  const g = $('grid'); g.innerHTML = '';
+  state.shots.forEach(s => { const im = document.createElement('img'); im.src = s.url; im.onclick = () => { closeSheets(); openViewer(s); }; g.appendChild(im); });
+  $('gallerySheet').classList.add('open');
+};
+
+/* ---------------- UI ---------------- */
+function swatchFor(look) {
+  // 用同一張示意圖算出每個風格的縮圖
+  return swatchCache[look.id] || '';
+}
+const swatchCache = {};
+async function buildSwatches() {
+  const c = document.createElement('canvas'); c.width = 96; c.height = 96;
+  const x = c.getContext('2d');
+  const g1 = x.createLinearGradient(0, 0, 0, 60); g1.addColorStop(0, '#7fb2e5'); g1.addColorStop(1, '#d9e8f2');
+  x.fillStyle = g1; x.fillRect(0, 0, 96, 60);
+  x.fillStyle = '#f6c47a'; x.beginPath(); x.arc(70, 22, 10, 0, 7); x.fill();
+  x.fillStyle = '#4f8a3c'; x.fillRect(0, 56, 96, 40);
+  x.fillStyle = '#2f6a2a'; x.beginPath(); x.moveTo(0, 60); x.lineTo(30, 40); x.lineTo(60, 62); x.fill();
+  x.fillStyle = '#e0a07c'; x.beginPath(); x.arc(34, 70, 12, 0, 7); x.fill();
+  x.fillStyle = '#c0392b'; x.fillRect(22, 82, 24, 14);
+  const r = new FilmRenderer(document.createElement('canvas'), true);
+  r.setSource(c, 96, 96);
+  for (const l of LOOKS) { r.render(l.p, 96, 96, { seed: 2, strength: 1 }); swatchCache[l.id] = r.canvas.toDataURL('image/jpeg', 0.8); }
+  const lose = r.gl.getExtension('WEBGL_lose_context'); if (lose) lose.loseContext();
+}
+function buildLooks() {
+  els.looks.innerHTML = '';
+  const rec = recommend(state.scene).looks;
+  LOOKS.forEach((l, i) => {
+    const b = document.createElement('button'); b.className = 'look' + (i === state.lookIdx ? ' on' : '');
+    const badge = rec[0] === l.id ? '<i class="badge">建議</i>' : '';
+    b.innerHTML = `<span class="sw" style="background-image:url(${swatchFor(l)})">${badge}</span>${l.name}`;
+    b.onclick = () => { state.userPicked = true; selectLook(i); };
+    els.looks.appendChild(b);
+  });
+  updateLookName();
+}
+function selectLook(i, opts = {}) {
+  state.lookIdx = i; store.set('lookId', LOOKS[i].id);
+  [...els.looks.children].forEach((b, j) => b.classList.toggle('on', j === i));
+  if (els.looks.children[i] && !opts.noScroll) els.looks.children[i].scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+  updateLookName(); renderRecLooks(); requestRender();
+}
+function updateLookName() { const l = LOOKS[state.lookIdx]; els.lookName.innerHTML = `<b>${l.name}</b>${l.ref}`; }
+
+/* ---------------- 場景選單 ---------------- */
+function sceneSummary() {
+  const sel = sceneSelected(state.scene);
+  return sel.map(o => o.label).join('・');
+}
+function updateSceneBar() {
+  const s = sceneSummary(), bar = $('sceneBar');
+  bar.classList.toggle('set', !!s);
+  const ask = state.mode === 'camera' ? '要拍什麼？' : '這張照片是什麼場景？';
+  bar.innerHTML = s ? `場景　<b>${s}</b>　›` : `${ask}<b>點這裡選，會推薦風格</b>`;
+}
+function buildSceneGroups() {
+  const box = $('sceneGroups'); box.innerHTML = '';
+  for (const g of SCENE_GROUPS) {
+    const div = document.createElement('div'); div.className = 'sgroup';
+    div.innerHTML = `<h3>${g.title}<small>${g.note}</small></h3><div class="chips"></div>` + (g.help ? `<div class="shint">${g.help}</div>` : '');
+    const chips = div.querySelector('.chips'), hint = div.querySelector('.shint');
+    for (const o of g.options) {
+      const c = document.createElement('button'); c.className = 'chip'; c.textContent = o.label; c.dataset.id = o.id;
+      c.onclick = () => toggleScene(g, o);
+      chips.appendChild(c);
+    }
+    div.dataset.group = g.key;
+    box.appendChild(div);
+  }
+  refreshSceneUI();
+}
+function toggleScene(g, o) {
+  const sc = state.scene;
+  if (g.single) sc[g.key] = sc[g.key] === o.id ? null : o.id;
+  else { const set = new Set(sc[g.key]); set.has(o.id) ? set.delete(o.id) : set.add(o.id); sc[g.key] = [...set]; }
+  store.set('scene', sc);
+  if (g.single && sc[g.key]) {
+    const gi = SCENE_GROUPS.indexOf(g), next = document.querySelectorAll('#sceneGroups .sgroup')[gi + 1];
+    if (next) setTimeout(() => next.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 60);
+  }
+  // 場景一改，就套用第一推薦（使用者之後仍可點其他建議或下方任一風格）
+  const rec = recommend(sc);
+  // 使用者這次沒有自己點過風格 → 一律跟著首選；點過且仍在建議內 → 保留他的選擇
+  const keep = state.userPicked && rec.looks.includes(LOOKS[state.lookIdx].id);
+  if (rec.looks.length && !keep) selectLook(lookIndex(rec.looks[0]), { noScroll: true });
+  refreshSceneUI();
+}
+function refreshSceneUI() {
+  const sc = state.scene;
+  document.querySelectorAll('#sceneGroups .sgroup').forEach(div => {
+    const g = SCENE_GROUPS.find(x => x.key === div.dataset.group);
+    const chosen = g.single ? [sc[g.key]] : sc[g.key];
+    div.querySelectorAll('.chip').forEach(c => c.classList.toggle('on', chosen.includes(c.dataset.id)));
+  });
+  const rec = recommend(sc);
+  $('sceneWhy').textContent = rec.why.length ? rec.why.slice(0, 3).join('；') : '先選「主要拍什麼」和「光線」，就會出現建議。都不選也可以直接按完成。';
+  $('sceneTweak').checked = state.sceneTweak;
+  renderRecLooks(); updateSceneBar(); buildLooks(); requestRender(); requestAnimationFrame(updateMore);
+}
+function renderRecLooks() {
+  const box = $('recLooks'); if (!box) return;
+  const rec = recommend(state.scene).looks;
+  box.innerHTML = '';
+  rec.forEach((id, k) => {
+    const l = LOOKS[lookIndex(id)];
+    const b = document.createElement('button');
+    b.className = 'recLook' + (state.lookIdx === lookIndex(id) ? ' on' : '');
+    b.innerHTML = `<i style="background-image:url(${swatchFor(l)})"></i><span><em>${k === 0 ? '首選' : '也適合'}</em>${l.name}</span>`;
+    b.onclick = () => { state.userPicked = true; selectLook(lookIndex(id), { noScroll: true }); };
+    box.appendChild(b);
+  });
+}
+function updateMore() {
+  const s = $('sceneGroups');
+  $('sceneMore').style.display = s.scrollHeight - s.scrollTop - s.clientHeight > 12 ? 'block' : 'none';
+}
+$('sceneGroups').addEventListener('scroll', updateMore, { passive: true });
+function openScenePanel() {
+  state.userPicked = false;
+  document.body.classList.add('scene-open'); $('scenePanel').classList.add('open');
+  refreshSceneUI(); layout(); requestRender(); requestAnimationFrame(updateMore);
+}
+function closeScenePanel() {
+  document.body.classList.remove('scene-open'); $('scenePanel').classList.remove('open');
+  layout(); requestRender();
+  const cur = els.looks.children[state.lookIdx]; if (cur) cur.scrollIntoView({ inline: 'center', block: 'nearest' });
+}
+$('sceneBar').onclick = openScenePanel;
+$('sceneDone').onclick = closeScenePanel;
+$('sceneClear').onclick = () => { state.scene = { subject: null, light: null, things: [] }; store.set('scene', state.scene); refreshSceneUI(); };
+$('sceneTweak').onchange = e => { state.sceneTweak = e.target.checked; store.set('sceneTweak', state.sceneTweak); requestRender(); };
+
+// 左右滑動切換風格
+(() => { let x0 = null;
+  els.vf.addEventListener('touchstart', e => { x0 = e.touches[0].clientX; }, { passive: true });
+  els.vf.addEventListener('touchend', e => { if (x0 == null) return; const dx = e.changedTouches[0].clientX - x0; x0 = null;
+    if (Math.abs(dx) > 50) selectLook((state.lookIdx + (dx < 0 ? 1 : LOOKS.length - 1)) % LOOKS.length); });
+})();
+
+function setShutterLabel() { els.shutter.querySelector('span').textContent = state.mode === 'edit' ? '存檔' : ''; }
+
+const SLIDERS = {
+  strength: v => v + '%', exposure: v => (v > 0 ? '+' : '') + Number(v).toFixed(2),
+  temp: v => (v > 0 ? '暖 +' : v < 0 ? '冷 ' : '') + Number(v).toFixed(2), grain: v => v + '%', halation: v => v + '%', vignette: v => '+' + v + '%'
+};
+function bindSettings() {
+  for (const k of Object.keys(SLIDERS)) {
+    const s = $('s_' + k), o = $('o_' + k);
+    s.value = state.user[k]; o.textContent = SLIDERS[k](state.user[k]);
+    s.oninput = () => { state.user[k] = Number(s.value); o.textContent = SLIDERS[k](s.value); store.set('user', state.user); requestRender(); };
+  }
+  const st = $('s_stamp'); st.checked = state.user.stamp;
+  st.onchange = () => { state.user.stamp = st.checked; store.set('user', state.user); updateStamp(); };
+}
+$('resetBtn').onclick = () => { state.user = Object.assign({}, USER_DEFAULT); store.set('user', state.user); bindSettings(); updateStamp(); requestRender(); };
+$('settingsBtn').onclick = () => $('settingsSheet').classList.add('open');
+function closeSheets() { document.querySelectorAll('.sheet').forEach(s => s.classList.remove('open')); }
+document.querySelectorAll('.sheet').forEach(s => s.addEventListener('click', e => { if (e.target === s || e.target.hasAttribute('data-close')) closeSheets(); }));
+
+$('importBtn').onclick = () => $('fileInput').click();
+$('fileInput').onchange = e => { openImage(e.target.files[0]); e.target.value = ''; };
+$('captureInput').onchange = e => { openImage(e.target.files[0]); e.target.value = ''; };
+els.shutter.onclick = shoot;
+els.flip.onclick = async () => {
+  if (state.mode !== 'camera') { tryCamera(); return; }
+  state.facing = state.facing === 'environment' ? 'user' : 'environment';
+  try { await startCamera(); } catch (e) { toast('無法切換鏡頭'); }
+};
+
+function showHint(html) { els.hint.innerHTML = html; els.hint.style.display = 'grid'; }
+function hideHint() { els.hint.style.display = 'none'; }
+let toastTimer;
+function toast(msg) { const t = $('toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(toastTimer); toastTimer = setTimeout(() => t.style.display = 'none', 2200); }
+
+function noCameraHint(reason) {
+  showHint(`<div><b>${reason}</b><br>還是可以用手機相機拍一張，或從相簿挑照片來套底片風格。
+    <div class="row"><button class="pill primary" id="hintCapture">拍一張</button><button class="pill" id="hintImport">從相簿選</button></div>
+    <div class="row"><button class="pill" id="hintRetry">再試一次開相機</button></div></div>`);
+  $('hintCapture').onclick = () => $('captureInput').click();
+  $('hintImport').onclick = () => $('fileInput').click();
+  $('hintRetry').onclick = tryCamera;
+}
+async function tryCamera() {
+  try { await startCamera(); }
+  catch (e) {
+    state.mode = state.editBitmap ? 'edit' : 'none';
+    const name = e && e.name;
+    const reason = name === 'NotAllowedError' ? '相機權限被拒絕或這個環境不允許使用相機'
+      : name === 'NotFoundError' ? '找不到相機' : '這個環境沒辦法開相機';
+    if (state.mode === 'none') noCameraHint(reason); else toast(reason);
+    setShutterLabel();
+  }
+}
+
+/* ---------------- 啟動 ---------------- */
+(async function init() {
+  await buildSwatches().catch(() => {});
+  buildLooks(); buildSceneGroups(); bindSettings(); layout(); setShutterLabel();
+  await tryCamera();
+  if ('serviceWorker' in navigator && location.protocol === 'https:') {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && state.mode === 'camera') stopCamera();
+    else if (!document.hidden && state.mode === 'camera' && !state.stream) startCamera().catch(() => {});
+  });
+})();
+</script>
+</body>
+</html>
